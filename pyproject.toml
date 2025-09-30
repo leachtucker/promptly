@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "promptly"
+version = "0.1.0"
+description = "A lightweight library for LLM prompt management, observability/tracing, and optimization"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Tucker Leach", email = "leachtucker@gmail.com"},
+]
+keywords = ["llm", "prompt", "ai", "machine-learning", "evaluation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "jinja2>=3.0.0",
+    "openai>=1.0.0",
+    "anthropic>=0.18.0",
+    "pydantic>=2.0.0",
+    "aiohttp>=3.8.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+cli = [
+    "click>=8.0.0",
+    "rich>=13.0.0",
+]
+ui = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "streamlit>=1.20.0",
+]
+
+[project.scripts]
+promptly = "promptly.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["promptly"]
+
+[tool.setuptools.package-dir]
+"" = "promptly"
