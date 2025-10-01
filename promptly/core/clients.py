@@ -57,8 +57,6 @@ class OpenAIClient(BaseLLMClient):
         self,
         prompt: str,
         model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
         **kwargs: Any,
     ) -> LLMResponse:
         """Generate response using OpenAI"""
@@ -66,9 +64,7 @@ class OpenAIClient(BaseLLMClient):
 
         response = await self.client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            max_tokens=max_tokens,
+            messages=[{"role": "system", "content": prompt}],
             **kwargs,
         )
 
@@ -86,8 +82,9 @@ class OpenAIClient(BaseLLMClient):
             },
         )
 
-    def get_available_models(self) -> List[str]:
-        return ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o"]
+    async def get_available_models(self) -> List[str]:
+        models = await self.client.models.list()
+        return [model.id for model in models.data]
 
 
 class AnthropicClient(BaseLLMClient):
@@ -101,19 +98,14 @@ class AnthropicClient(BaseLLMClient):
         self,
         prompt: str,
         model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
         **kwargs: Any,
     ) -> LLMResponse:
         """Generate response using Anthropic"""
         model = model or self.default_model
-        max_tokens = max_tokens or 1000
 
         response = await self.client.messages.create(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            max_tokens=max_tokens,
+            system=prompt,
             **kwargs,
         )
 
@@ -129,12 +121,9 @@ class AnthropicClient(BaseLLMClient):
             metadata={"stop_reason": response.stop_reason, "response_id": response.id},
         )
 
-    def get_available_models(self) -> List[str]:
-        return [
-            "claude-3-haiku-20240307",
-            "claude-3-sonnet-20240229",
-            "claude-3-opus-20240229",
-        ]
+    async def get_available_models(self) -> List[str]:
+        models = await self.client.models.list(limit=1000)
+        return [model.id for model in models.data]
 
 
 class LocalLLMClient(BaseLLMClient):

@@ -17,7 +17,7 @@ class PromptMetadata:
 
 
 class PromptTemplate:
-    """Core prompt template with Jinja2 templating"""
+    """Core prompt template with variable interpolation"""
 
     def __init__(
         self,

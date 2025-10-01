@@ -113,10 +113,11 @@ class TestOpenAIClient:
         call_args = mock_client.chat.completions.create.call_args
         assert call_args[1]["model"] == "gpt-3.5-turbo"
 
-    def test_openai_client_get_available_models(self):
+    @pytest.mark.asyncio
+    async def test_openai_client_get_available_models(self):
         """Test OpenAI client get available models"""
         client = OpenAIClient()
-        models = client.get_available_models()
+        models = await client.get_available_models()
 
         assert isinstance(models, list)
         assert len(models) > 0
@@ -199,7 +200,7 @@ class TestAnthropicClient:
         assert call_args[1]["model"] == "claude-3-sonnet-20240229"
         assert call_args[1]["temperature"] == 0.7
         assert call_args[1]["max_tokens"] == 100
-        assert call_args[1]["messages"][0]["content"] == "Test prompt"
+        assert call_args[1]["system"] == "Test prompt"
 
     @pytest.mark.asyncio
     @patch("anthropic.AsyncAnthropic")
@@ -231,15 +232,16 @@ class TestAnthropicClient:
         call_args = mock_client.messages.create.call_args
         assert call_args[1]["model"] == "claude-3-sonnet-20240229"
 
-    def test_anthropic_client_get_available_models(self):
+    @pytest.mark.asyncio
+    async def test_anthropic_client_get_available_models(self):
         """Test Anthropic client get available models"""
         client = AnthropicClient()
-        models = client.get_available_models()
+        models = await client.get_available_models()
 
         assert isinstance(models, list)
         assert len(models) > 0
-        assert "claude-3-sonnet-20240229" in models
-        assert "claude-3-haiku-20240307" in models
+        assert "claude-opus-4-1-20250805" in models
+        assert "claude-sonnet-4-5-20250929" in models
 
     @pytest.mark.asyncio
     @patch("anthropic.AsyncAnthropic")
