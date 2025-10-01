@@ -60,9 +60,9 @@ async def _run_simple_prompt(
         from ..core.clients import BaseLLMClient
         client: BaseLLMClient
         if provider == "openai":
-            client = OpenAIClient(api_key=api_key or "dummy-key")
+            client = OpenAIClient(api_key=api_key)
         elif provider == "anthropic":
-            client = AnthropicClient(api_key=api_key or "dummy-key")
+            client = AnthropicClient(api_key=api_key)
         else:
             click.echo(f"Unsupported provider: {provider}")
             return
@@ -76,7 +76,7 @@ async def _run_simple_prompt(
         # Run prompt
         from ..core.templates import PromptTemplate
         template = PromptTemplate(template=prompt, name="cli_prompt")
-        response = await runner.run(template, model=model)
+        response = await runner.run(model, template)
 
         click.echo(f"Response: {response.content}")
 

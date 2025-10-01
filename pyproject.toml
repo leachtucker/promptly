@@ -54,7 +54,5 @@ ui = [
 promptly = "promptly.cli.main:main"
 
 [tool.setuptools.packages.find]
-where = ["promptly"]
-
-[tool.setuptools.package-dir]
-"" = "promptly"
+where = ["."]
+include = ["promptly*"]
