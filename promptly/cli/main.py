@@ -4,7 +4,9 @@ Command-line interface for promptly
 
 import click
 import asyncio
+import json
 from typing import Optional
+from dataclasses import asdict
 from ..core.runner import PromptRunner
 from ..core.tracer import Tracer
 from ..core.clients import OpenAIClient, AnthropicClient
@@ -28,7 +30,7 @@ def main() -> None:
     help="LLM provider",
 )
 @click.option("--api-key", help="API key for the provider")
-@click.option("--trace", is_flag=True, help="Enable tracing")
+@click.option("--trace", is_flag=True, help="Enable tracing", default=True)
 @click.argument("prompt", required=False)
 def run(
     template: Optional[str],
@@ -91,12 +93,22 @@ async def _run_simple_prompt(
 @click.option("--trace-id", help="Trace ID to view")
 def trace(trace_id: Optional[str]) -> None:
     """View trace information"""
-    if trace_id:
-        click.echo(f"Viewing trace: {trace_id}")
-        # TODO: Implement trace viewing
-    else:
-        click.echo("Listing recent traces...")
-        # TODO: Implement trace listing
+
+    try:
+        if trace_id:
+            click.echo(f"Viewing trace: {trace_id}")
+            tracer = Tracer()
+            trace_record = tracer.get_record(trace_id)
+            click.echo(f"Trace record: {json.dumps(asdict(trace_record), default=str, indent=2)}")
+        else:
+            click.echo("Listing recent traces...")
+            tracer = Tracer()
+            trace_records = tracer.list_records()
+            trace_records = [asdict(record) for record in trace_records]
+            click.echo_via_pager(f"Trace records: {json.dumps(trace_records, default=str, indent=2)}")
+
+    except Exception as e:
+        click.echo(f"Error: {e}")
 
 
 if __name__ == "__main__":

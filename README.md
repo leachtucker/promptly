@@ -68,7 +68,7 @@ asyncio.run(main())
 
 ```bash
 # Run a simple prompt
-promptly run "What is the capital of France?" --model gpt-3.5-turbo
+promptly run "What is the capital of France?" --model="gpt-3.5-turbo"
 
 # Run with tracing
 promptly run "Explain quantum computing" --trace
@@ -81,23 +81,8 @@ promptly trace
 
 For developers who want to contribute to or extend promptly:
 
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Complete development guide
-- **[TESTING.md](TESTING.md)** - Detailed testing documentation
+- **[Developer Quick Start.md](DEVELOPER_QUICKSTART.md)** - Complete development guide
 
-### Quick Development Setup
-
-```bash
-# Clone and install in development mode
-git clone https://github.com/tuckerleach/promptly.git
-cd promptly
-pip install -e .[dev,cli,ui]
-
-# Run tests
-pytest
-
-# Run CLI
-promptly --help
-```
 
 ## License
 

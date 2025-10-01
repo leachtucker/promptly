@@ -70,12 +70,14 @@ def load_env_for_promptly() -> None:
     - ANTHROPIC_API_KEY
     - PROMPTLY_DB_PATH (for tracer database)
     - PROMPTLY_LOG_LEVEL
+    - PROMPTLY_TRACING_ENABLED
     """
     load_env_file()
     
     # Set default values for promptly-specific variables if not already set
     if not os.getenv("PROMPTLY_DB_PATH"):
         os.environ["PROMPTLY_DB_PATH"] = "promptly_traces.db"
-    
     if not os.getenv("PROMPTLY_LOG_LEVEL"):
         os.environ["PROMPTLY_LOG_LEVEL"] = "INFO"
+    if not os.getenv("PROMPTLY_TRACING_ENABLED"):
+        os.environ["PROMPTLY_TRACING_ENABLED"] = "false"

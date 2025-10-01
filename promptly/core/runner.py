@@ -108,18 +108,22 @@ class PromptRunner:
             generation_error = Exception("No response from LLM")
 
         # Log trace
-        trace_record = TraceRecord(
-            prompt_name=prompt.name,
-            prompt_template=prompt.template,
-            rendered_prompt=rendered_prompt,
-            response=response.content if response is not None else "",
-            model=response.model if response is not None else "",
-            duration_ms=duration_ms,
-            usage=response.usage if response is not None else {},
-            metadata=response.metadata if response is not None else {},
-            error=str(generation_error) if generation_error is not None else None,
-        )
-        self.tracer.log(trace_record)
+        if self.tracer.is_tracing_enabled:
+            trace_record = TraceRecord(
+                prompt_name=prompt.name,
+                prompt_template=prompt.template,
+                rendered_prompt=rendered_prompt,
+                response=response.content if response is not None else "",
+                model=response.model if response is not None else "",
+                duration_ms=duration_ms,
+                usage=response.usage if response is not None else {},
+                metadata=response.metadata if response is not None else {},
+                error=str(generation_error) if generation_error is not None else None,
+            )
+            trace_record = self.tracer.log(trace_record)
+
+            if response is not None:
+                response.metadata["trace_id"] = trace_record.id
 
         if generation_error is not None:
             raise generation_error

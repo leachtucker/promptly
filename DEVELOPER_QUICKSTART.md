@@ -9,20 +9,8 @@ python dev.py install && python dev.py test
 
 ## 📋 Common Commands
 
-### Using the dev script (recommended)
-```bash
-python dev.py check          # Check environment
-python dev.py install        # Install with dev dependencies
-python dev.py test           # Run all tests
-python dev.py test-unit      # Run unit tests only
-python dev.py test-coverage  # Run tests with coverage
-python dev.py lint           # Run code quality checks
-python dev.py format         # Format code
-python dev.py clean          # Clean build artifacts
-python dev.py ci             # Run full CI pipeline
-```
 
-### Using Make (alternative)
+### Using Make 
 ```bash
 make help                    # Show all commands
 make install-dev             # Install with dev dependencies
@@ -48,15 +36,13 @@ pytest tests/test_runner.py  # Specific test file
 
 ```
 promptly/
-├── promptly/           # Main package
+├── promptly/          # Main package
 │   ├── __init__.py    # Package exports
-│   ├── cli.py         # CLI interface
+│   ├── cli/           # CLI interface
 │   └── core/          # Core functionality
 ├── tests/             # Test suite
 ├── pyproject.toml     # Package configuration
-├── setup.py           # Legacy setup
 ├── Makefile           # Development commands
-├── dev.py             # Development script
 └── README.md          # User documentation
 ```
 
@@ -84,9 +70,7 @@ promptly/
 
 ## 📚 Documentation
 
-- **[README.md](README.md)** - User documentation
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Complete development guide
-- **[TESTING.md](TESTING.md)** - Detailed testing guide
+- **[Changelog](CHANGELOG.md)**
 
 ## 🐛 Debugging
 
@@ -107,9 +91,8 @@ promptly --help
 ## 🚨 Common Issues
 
 1. **Import errors**: Ensure virtual environment is activated
-2. **Test failures**: Run `python dev.py install` first
+2. **Test failures**: Run `make install-dev` first
 3. **CLI not found**: Install with `pip install -e .[cli]`
-4. **Database errors**: Check file permissions for SQLite files
 
 ## 📦 Package Management
 

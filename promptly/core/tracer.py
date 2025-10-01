@@ -2,7 +2,7 @@ import sqlite3
 import json
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from .utils.env import get_env_var
 
@@ -38,6 +38,8 @@ class Tracer:
 
         self.db_path = Path(db_path)
         self._init_db()
+        self.is_tracing_enabled = get_env_var("PROMPTLY_TRACING_ENABLED", "false") == "true"
+        
 
     def _init_db(self) -> None:
         """Initialize SQLite database"""
@@ -63,6 +65,9 @@ class Tracer:
 
     def log(self, record: TraceRecord) -> TraceRecord:
         """Log a trace record"""
+
+        if not self.is_tracing_enabled:
+            return record
 
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
