@@ -14,6 +14,7 @@ from promptly.core.templates import PromptTemplate, PromptMetadata
 from promptly.core.tracer import Tracer, TraceRecord
 
 
+
 @pytest.fixture
 def event_loop():
     """Create an instance of the default event loop for the test session."""
@@ -25,9 +26,34 @@ def event_loop():
 @pytest.fixture
 def temp_db():
     """Create a temporary database for testing"""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+    import sqlite3
+    from pathlib import Path
+
+    # Get the project root directory (where conftest.py is located)
+    project_root = Path(__file__).parent.parent
+    
+    # Create temp directory within project if it doesn't exist
+    temp_dir = project_root / "temp"
+    temp_dir.mkdir(exist_ok=True)
+
+    # Create temporary file within project directory
+    with tempfile.NamedTemporaryFile(
+        suffix=".db", 
+        delete=False, 
+        dir=temp_dir  # This ensures it's created in our temp dir
+    ) as tmp:
         db_path = tmp.name
+        os.environ["PROMPTLY_DB_PATH"] = db_path
+    
+    # Verify database can be created and is functional
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE test_init (id INTEGER)")
+        conn.commit()
+    
     yield db_path
+    
+    # Cleanup
     if os.path.exists(db_path):
         os.unlink(db_path)
 

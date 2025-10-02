@@ -39,7 +39,7 @@ class Tracer:
         self.db_path = Path(db_path)
         self._init_db()
         self.is_tracing_enabled = get_env_var("PROMPTLY_TRACING_ENABLED", "false") == "true"
-        
+
 
     def _init_db(self) -> None:
         """Initialize SQLite database"""

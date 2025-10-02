@@ -33,9 +33,9 @@ class TestPromptRunner:
         assert runner.tracer == tracer_with_temp_db
 
     @pytest.mark.asyncio
-    async def test_runner_run_success(self, mock_llm_client, sample_prompt_template):
+    async def test_runner_run_success(self, mock_llm_client, sample_prompt_template, tracer_with_temp_db):
         """Test successful prompt execution"""
-        runner = PromptRunner(mock_llm_client)
+        runner = PromptRunner(mock_llm_client, tracer_with_temp_db)
 
         # Mock the client response
         expected_response = LLMResponse(
@@ -156,9 +156,9 @@ class TestPromptRunner:
         assert trace.response == ""
 
     @pytest.mark.asyncio
-    async def test_runner_run_simple(self, mock_llm_client):
+    async def test_runner_run_simple(self, mock_llm_client, tracer_with_temp_db):
         """Test simple prompt execution without template"""
-        runner = PromptRunner(mock_llm_client)
+        runner = PromptRunner(mock_llm_client, tracer_with_temp_db)
 
         # Mock the client response
         expected_response = LLMResponse(
@@ -186,10 +186,10 @@ class TestPromptRunner:
 
     @pytest.mark.asyncio
     async def test_runner_run_with_llm_kwargs(
-        self, mock_llm_client, sample_prompt_template
+        self, mock_llm_client, sample_prompt_template, tracer_with_temp_db
     ):
         """Test prompt execution with additional LLM parameters"""
-        runner = PromptRunner(mock_llm_client)
+        runner = PromptRunner(mock_llm_client, tracer_with_temp_db)
 
         # Mock the client response
         expected_response = LLMResponse(
@@ -218,9 +218,9 @@ class TestPromptRunner:
         assert call_args[1]["max_tokens"] == 100
 
     @pytest.mark.asyncio
-    async def test_runner_run_without_variables(self, mock_llm_client):
+    async def test_runner_run_without_variables(self, mock_llm_client, tracer_with_temp_db):
         """Test prompt execution without variables"""
-        runner = PromptRunner(mock_llm_client)
+        runner = PromptRunner(mock_llm_client, tracer_with_temp_db)
 
         # Create template that doesn't require variables
         template = PromptTemplate(
@@ -245,3 +245,6 @@ class TestPromptRunner:
         mock_llm_client.generate.assert_called_once()
         call_args = mock_llm_client.generate.call_args
         assert call_args[0][0] == "What is the capital of France?"
+
+
+

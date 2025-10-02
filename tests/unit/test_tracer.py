@@ -66,6 +66,7 @@ class TestTracer:
 
     def test_tracer_initialization(self, temp_db):
         """Test Tracer initialization with temporary database"""
+        print(f"Creating tracer with temporary database at {temp_db}")
         tracer = Tracer(db_path=temp_db)
 
         assert tracer.db_path.exists()
