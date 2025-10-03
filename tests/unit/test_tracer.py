@@ -5,7 +5,7 @@ Tests for Tracer and TraceRecord
 import pytest
 import sqlite3
 from datetime import datetime
-from promptly.core.tracer import Tracer, TraceRecord
+from promptly.core.tracer import Tracer, TraceRecord, UsageData
 
 
 class TestTraceRecord:
@@ -28,7 +28,7 @@ class TestTraceRecord:
         assert record.response == "Hello! How can I help?"
         assert record.model == "gpt-3.5-turbo"
         assert record.duration_ms == 150.5
-        assert record.usage == {}
+        assert record.usage == UsageData()
         assert record.metadata == {}
         assert isinstance(record.timestamp, datetime)
 
@@ -41,14 +41,14 @@ class TestTraceRecord:
         assert record.response == ""
         assert record.model == ""
         assert record.duration_ms == 0
-        assert record.usage == {}
+        assert record.usage == UsageData()
         assert record.metadata == {}
         assert record.error is None
         assert isinstance(record.timestamp, datetime)
 
     def test_trace_record_with_usage(self):
         """Test TraceRecord with usage information"""
-        usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        usage = UsageData(prompt_tokens=10, completion_tokens=5, total_tokens=15)
         record = TraceRecord(prompt_name="test", usage=usage)
 
         assert record.usage == usage
@@ -157,13 +157,13 @@ class TestTracer:
             prompt_name="test1",
             model="gpt-3.5-turbo",
             duration_ms=100,
-            usage={"total_tokens": 10},
+            usage=UsageData(total_tokens=10),
         )
         record2 = TraceRecord(
             prompt_name="test2",
             model="gpt-4",
             duration_ms=200,
-            usage={"total_tokens": 20},
+            usage=UsageData(total_tokens=20),
         )
 
         tracer.log(record1)

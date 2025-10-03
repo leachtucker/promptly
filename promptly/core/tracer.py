@@ -2,10 +2,17 @@ import sqlite3
 import json
 from datetime import datetime
 from typing import Dict, Any, Optional, List
+from dataclasses import asdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from .utils.env import get_env_var
 
+@dataclass
+class UsageData:
+    """Trace statistics"""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 @dataclass
 class TraceRecord:
@@ -19,7 +26,7 @@ class TraceRecord:
     model: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     duration_ms: float = 0
-    usage: Dict[str, int] = field(default_factory=dict)
+    usage: UsageData = field(default_factory=UsageData)
     metadata: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
 
@@ -87,7 +94,7 @@ class Tracer:
                     record.model,
                     record.timestamp.isoformat(),
                     record.duration_ms,
-                    json.dumps(record.usage),
+                    json.dumps(asdict(record.usage)),
                     json.dumps(record.metadata, default=str),
                     record.error,
                 ),
@@ -141,12 +148,21 @@ class Tracer:
 
         return records
 
-    def get_record(self, id: str) -> TraceRecord:
+    def get_record(self, id: str) -> Optional[TraceRecord]:
         """Get a trace record by id"""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM traces WHERE id = ?", (id,))
             row = cursor.fetchone()
+
+            if row is None:
+                return None
+
+            # Load JSON columns into their respective dataclass instances
+            usage_data = UsageData(**json.loads(row["usage"]))
+            row = {k: row[k] for k in row.keys() if k != "usage"}
+            row["usage"] = usage_data
+
             return TraceRecord(**row)
 
     def get_stats(self) -> Dict[str, Any]:

@@ -6,6 +6,7 @@ import openai
 import anthropic
 
 from .utils.env import get_env_var
+from .tracer import UsageData
 
 ENV_OPENAI_API_KEY = get_env_var("OPENAI_API_KEY")
 ENV_ANTHROPIC_API_KEY = get_env_var("ANTHROPIC_API_KEY")
@@ -17,7 +18,7 @@ class LLMResponse:
 
     content: str
     model: str
-    usage: Dict[str, int]  # tokens used
+    usage: UsageData = field(default_factory=UsageData)  # tokens used
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -71,11 +72,11 @@ class OpenAIClient(BaseLLMClient):
         return LLMResponse(
             content=response.choices[0].message.content,
             model=model,
-            usage={
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            },
+            usage=UsageData(
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                total_tokens=response.usage.total_tokens,
+            ),
             metadata={
                 "finish_reason": response.choices[0].finish_reason,
                 "response_id": response.id,
@@ -112,12 +113,12 @@ class AnthropicClient(BaseLLMClient):
         return LLMResponse(
             content=response.content[0].text,
             model=model,
-            usage={
-                "prompt_tokens": response.usage.input_tokens,
-                "completion_tokens": response.usage.output_tokens,
-                "total_tokens": response.usage.input_tokens
+            usage=UsageData(
+                prompt_tokens=response.usage.input_tokens,
+                completion_tokens=response.usage.output_tokens,
+                total_tokens=response.usage.input_tokens
                 + response.usage.output_tokens,
-            },
+            ),
             metadata={"stop_reason": response.stop_reason, "response_id": response.id},
         )
 
@@ -146,7 +147,7 @@ class LocalLLMClient(BaseLLMClient):
         return LLMResponse(
             content=f"Local response for: {prompt[:50]}...",
             model=model or self.default_model,
-            usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            usage=UsageData(prompt_tokens=0, completion_tokens=0, total_tokens=0),
         )
 
     def get_available_models(self) -> List[str]:

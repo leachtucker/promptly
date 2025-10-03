@@ -107,10 +107,11 @@ def trace(trace_id: Optional[str]) -> None:
                 return
             
             console = Console()
-            table = Table(title="Trace Records")
+            table = Table(title="Trace Records", row_styles=["", "dim"])
             
             table.add_column("ID", style="cyan")
             table.add_column("Prompt", style="green", max_width=40)
+            table.add_column("Response", style="blue", max_width=200)
             table.add_column("Model", style="yellow")
             table.add_column("Duration (ms)", justify="right")
             table.add_column("Error", style="red")
@@ -119,25 +120,46 @@ def trace(trace_id: Optional[str]) -> None:
                 table.add_row(
                     str(record.id or "N/A"),
                     record.prompt_name[:40] + "..." if len(record.prompt_name) > 40 else record.prompt_name,
+                    record.response[:400] + "..." if len(record.response) > 400 else record.response,
                     record.model,
                     f"{record.duration_ms:.2f}",
                     str(record.error)[:30] if record.error else "None"
                 )
             
             console.print(table)
+        
+    def _view_trace(tracer: Tracer, trace_id: str) -> None:
+        """View a trace record"""
+        trace_record = tracer.get_record(trace_id)
+        if not trace_record:
+            click.echo(f"Trace {trace_id} not found")
+            return
+    
+        console = Console()
+
+        table = Table(title=f"Trace Record: {trace_record.id or 'N/A'}", show_lines=True)
+        table.add_column("Field", style="cyan", width=25)
+        table.add_column("Value", style="white", overflow="fold")
+        
+        table.add_row("ID", str(trace_record.id or "N/A"))
+        table.add_row("Prompt Name", trace_record.prompt_name)
+        table.add_row("Model", trace_record.model)
+        table.add_row("Duration", f"{trace_record.duration_ms:.2f}ms")
+        table.add_row("Total Tokens", str(trace_record.usage.total_tokens))
+        table.add_row("Prompt Tokens", str(trace_record.usage.prompt_tokens))
+        table.add_row("Completion Tokens", str(trace_record.usage.completion_tokens))
+        table.add_row("Error", str(trace_record.error) if trace_record.error else "None")
+        table.add_row("Prompt", trace_record.rendered_prompt)
+        table.add_row("Response", trace_record.response)
+    
+        console.print(table)
 
     try:
         tracer = Tracer()
 
         if trace_id:
-            click.echo(f"Viewing trace: {trace_id}")
-            trace_record = tracer.get_record(trace_id)
-            click.echo(f"Trace record: {json.dumps(asdict(trace_record), default=str, indent=2)}")
+            _view_trace(tracer, trace_id)
         else:
-            click.echo("Listing recent traces...")
-            # trace_records = tracer.list_records()
-            # trace_records = [asdict(record) for record in trace_records]
-            # click.echo_via_pager(f"Trace records: {json.dumps(trace_records, default=str, indent=2)}")
             _list_traces_table(tracer)
 
     except Exception as e:

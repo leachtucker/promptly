@@ -8,8 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 from promptly.core.runner import PromptRunner
 from promptly.core.templates import PromptTemplate
 from promptly.core.clients import LLMResponse
-from promptly.core.tracer import Tracer, TraceRecord
-
+from promptly.core.tracer import Tracer, TraceRecord, UsageData
 
 class TestPromptRunner:
     """Test PromptRunner functionality"""
@@ -41,7 +40,7 @@ class TestPromptRunner:
         expected_response = LLMResponse(
             content="Hello Alice, how are you today?",
             model="gpt-3.5-turbo",
-            usage={"total_tokens": 15},
+            usage=UsageData(total_tokens=15),
         )
         mock_llm_client.generate.return_value = expected_response
 
@@ -72,7 +71,7 @@ class TestPromptRunner:
         expected_response = LLMResponse(
             content="Hello Alice, how are you today?",
             model="gpt-3.5-turbo",
-            usage={"total_tokens": 15},
+            usage=UsageData(total_tokens=15),
         )
         mock_llm_client.generate.return_value = expected_response
 
@@ -164,7 +163,7 @@ class TestPromptRunner:
         expected_response = LLMResponse(
             content="This is a simple response",
             model="gpt-3.5-turbo",
-            usage={"total_tokens": 10},
+            usage=UsageData(total_tokens=10),
         )
         mock_llm_client.generate.return_value = expected_response
 
@@ -195,7 +194,7 @@ class TestPromptRunner:
         expected_response = LLMResponse(
             content="Response with custom params",
             model="gpt-3.5-turbo",
-            usage={"total_tokens": 20},
+            usage=UsageData(total_tokens=20),
         )
         mock_llm_client.generate.return_value = expected_response
 
@@ -231,7 +230,7 @@ class TestPromptRunner:
         expected_response = LLMResponse(
             content="The capital of France is Paris.",
             model="gpt-3.5-turbo",
-            usage={"total_tokens": 15},
+            usage=UsageData(total_tokens=15),
         )
         mock_llm_client.generate.return_value = expected_response
 

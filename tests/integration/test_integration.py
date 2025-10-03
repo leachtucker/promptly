@@ -7,7 +7,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 from promptly import PromptRunner, PromptTemplate, PromptMetadata
 from promptly.core.clients import OpenAIClient, LLMResponse
-from promptly.core.tracer import Tracer
+from promptly.core.tracer import Tracer, UsageData
 
 
 class TestIntegration:
@@ -24,7 +24,7 @@ class TestIntegration:
         mock_response = LLMResponse(
             content="Hello Alice, how are you today? I'm doing great, thank you for asking!",
             model="gpt-3.5-turbo",
-            usage={"total_tokens": 20},
+            usage=UsageData(total_tokens=20),
         )
         mock_client.generate.return_value = mock_response
 
@@ -86,12 +86,12 @@ class TestIntegration:
             LLMResponse(
                 content="Hello Alice!",
                 model="gpt-3.5-turbo",
-                usage={"total_tokens": 5},
+                usage=UsageData(total_tokens=5),
             ),
             LLMResponse(
                 content="The capital of France is Paris.",
                 model="gpt-3.5-turbo",
-                usage={"total_tokens": 10},
+                usage=UsageData(total_tokens=10),
             ),
         ]
         mock_client.generate.side_effect = mock_responses
@@ -176,7 +176,7 @@ class TestIntegration:
         mock_response = LLMResponse(
             content="The capital of France is Paris.",
             model="gpt-3.5-turbo",
-            usage={"total_tokens": 10},
+            usage=UsageData(total_tokens=10),
         )
         mock_client.generate.return_value = mock_response
 

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from promptly.core.clients import LLMResponse, BaseLLMClient
 from promptly.core.templates import PromptTemplate, PromptMetadata
-from promptly.core.tracer import Tracer, TraceRecord
+from promptly.core.tracer import Tracer, TraceRecord, UsageData
 
 
 
@@ -64,7 +64,7 @@ def sample_llm_response():
     return LLMResponse(
         content="This is a test response",
         model="gpt-3.5-turbo",
-        usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        usage=UsageData(prompt_tokens=10, completion_tokens=5, total_tokens=15),
         metadata={"trace_id": "test-trace-123"},
     )
 
@@ -89,7 +89,7 @@ def mock_llm_client():
     client = AsyncMock(spec=BaseLLMClient)
     client.generate = AsyncMock(
         return_value=LLMResponse(
-            content="Mock response", model="test-model", usage={"total_tokens": 10}
+            content="Mock response", model="test-model", usage=UsageData(total_tokens=10)
         )
     )
     client.get_available_models = MagicMock(return_value=["test-model"])
@@ -112,6 +112,6 @@ def sample_trace_record():
         response="Hello! How can I help you?",
         model="gpt-3.5-turbo",
         duration_ms=150.5,
-        usage={"total_tokens": 20},
+        usage=UsageData(total_tokens=20),
         metadata={"test": True},
     )

@@ -10,6 +10,7 @@ from promptly.core.clients import (
     AnthropicClient,
     LLMResponse,
 )
+from promptly.core.tracer import UsageData
 
 
 class TestBaseLLMClient:
@@ -67,11 +68,11 @@ class TestOpenAIClient:
         assert isinstance(response, LLMResponse)
         assert response.content == "Test response"
         assert response.model == "gpt-3.5-turbo"
-        assert response.usage == {
-            "prompt_tokens": 10,
-            "completion_tokens": 5,
-            "total_tokens": 15,
-        }
+        assert response.usage == UsageData(
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+        )
 
         # Verify OpenAI client was called correctly
         mock_client.chat.completions.create.assert_called_once()
@@ -188,11 +189,11 @@ class TestAnthropicClient:
         assert isinstance(response, LLMResponse)
         assert response.content == "Test response"
         assert response.model == "claude-3-sonnet-20240229"
-        assert response.usage == {
-            "prompt_tokens": 10,
-            "completion_tokens": 5,
-            "total_tokens": 15,
-        }
+        assert response.usage == UsageData(
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+        )
 
         # Verify Anthropic client was called correctly
         mock_client.messages.create.assert_called_once()

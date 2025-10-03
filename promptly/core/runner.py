@@ -3,7 +3,7 @@ import asyncio
 from typing import Dict, Any, Optional, List
 from .templates import PromptTemplate
 from .clients import BaseLLMClient, LLMResponse
-from .tracer import Tracer, TraceRecord
+from .tracer import Tracer, TraceRecord, UsageData
 
 
 class PromptRunner:
@@ -116,7 +116,7 @@ class PromptRunner:
                 response=response.content if response is not None else "",
                 model=response.model if response is not None else "",
                 duration_ms=duration_ms,
-                usage=response.usage if response is not None else {},
+                usage=response.usage if response is not None else UsageData(),
                 metadata=response.metadata if response is not None else {},
                 error=str(generation_error) if generation_error is not None else None,
             )

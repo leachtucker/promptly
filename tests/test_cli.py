@@ -7,6 +7,7 @@ from unittest.mock import patch, AsyncMock
 from click.testing import CliRunner
 from promptly.cli.main import main, run, trace
 from promptly.core.clients import LLMResponse
+from promptly.core.tracer import UsageData
 
 
 class TestCLI:
@@ -41,7 +42,7 @@ class TestCLI:
         mock_runner.run.return_value = LLMResponse(
             content="The capital of France is Paris.",
             model="gpt-3.5-turbo",
-            usage={"total_tokens": 10},
+            usage=UsageData(total_tokens=10),
         )
 
         # Mock OpenAI client
@@ -73,7 +74,7 @@ class TestCLI:
         mock_runner.run.return_value = LLMResponse(
             content="Test response",
             model="gpt-3.5-turbo",
-            usage={"total_tokens": 10},
+            usage=UsageData(total_tokens=10),
             metadata={"trace_id": "test-trace-123"},
         )
 
@@ -106,7 +107,7 @@ class TestCLI:
         mock_runner.run.return_value = LLMResponse(
             content="Anthropic response",
             model="claude-3-sonnet-20240229",
-            usage={"total_tokens": 10},
+            usage=UsageData(total_tokens=10),
         )
 
         # Mock OpenAI client (shouldn't be used)
@@ -142,7 +143,6 @@ class TestCLI:
         result = runner.invoke(trace, [])
 
         assert result.exit_code == 0
-        assert "Listing recent traces..." in result.output
 
     def test_cli_trace_specific(self):
         """Test CLI trace command with specific trace ID"""
@@ -150,7 +150,7 @@ class TestCLI:
         result = runner.invoke(trace, ["--trace-id", "test-123"])
 
         assert result.exit_code == 0
-        assert "Viewing trace: test-123" in result.output
+        assert "test-123" in result.output
 
     @patch("promptly.cli.main.PromptRunner")
     @patch("promptly.cli.main.OpenAIClient")
