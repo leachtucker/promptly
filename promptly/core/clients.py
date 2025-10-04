@@ -1,9 +1,9 @@
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, field
 import openai
 import anthropic
+from pydantic import BaseModel, Field
 
 from .utils.env import get_env_var
 from .tracer import UsageData
@@ -12,18 +12,12 @@ ENV_OPENAI_API_KEY = get_env_var("OPENAI_API_KEY")
 ENV_ANTHROPIC_API_KEY = get_env_var("ANTHROPIC_API_KEY")
 
 
-@dataclass
-class LLMResponse:
+class LLMResponse(BaseModel):
     """Standardized response from any LLM"""
-
     content: str
     model: str
-    usage: UsageData = field(default_factory=UsageData)  # tokens used
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        # metadata has default_factory, so no initialization needed
-        pass
+    usage: UsageData = Field(default_factory=UsageData)  # tokens used
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class BaseLLMClient(ABC):

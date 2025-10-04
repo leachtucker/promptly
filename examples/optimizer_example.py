@@ -8,7 +8,7 @@ from promptly import (
     LLMGeneticOptimizer,
     LLMAccuracyFitnessFunction,
     LLMSemanticFitnessFunction,
-    TestCase,
+    PromptTestCase,
     PromptTemplate,
     PromptRunner,
     OpenAIClient,
@@ -30,27 +30,27 @@ async def math_qa_optimization_example():
     
     # Create test cases
     test_cases = [
-        TestCase(
+        PromptTestCase(
             input_variables={"question": "What is 2+2?"},
             expected_output="4",
             metadata={"difficulty": "easy"}
         ),
-        TestCase(
+        PromptTestCase(
             input_variables={"question": "What is 15-7?"},
             expected_output="8",
             metadata={"difficulty": "easy"}
         ),
-        TestCase(
+        PromptTestCase(
             input_variables={"question": "What is 6*7?"},
             expected_output="42",
             metadata={"difficulty": "medium"}
         ),
-        TestCase(
+        PromptTestCase(
             input_variables={"question": "What is 100/4?"},
             expected_output="25",
             metadata={"difficulty": "medium"}
         ),
-        TestCase(
+        PromptTestCase(
             input_variables={"question": "What is 2^3?"},
             expected_output="8",
             metadata={"difficulty": "hard"}
@@ -109,17 +109,17 @@ async def creative_writing_optimization_example():
     
     # Create test cases for creative writing
     test_cases = [
-        TestCase(
+        PromptTestCase(
             input_variables={"genre": "sci-fi", "character": "robot"},
             expected_output="A story about a robot in a science fiction setting",
             metadata={"genre": "sci-fi"}
         ),
-        TestCase(
+        PromptTestCase(
             input_variables={"genre": "fantasy", "character": "wizard"},
             expected_output="A story about a wizard in a fantasy setting",
             metadata={"genre": "fantasy"}
         ),
-        TestCase(
+        PromptTestCase(
             input_variables={"genre": "mystery", "character": "detective"},
             expected_output="A story about a detective in a mystery setting",
             metadata={"genre": "mystery"}
@@ -177,17 +177,17 @@ async def code_generation_optimization_example():
     
     # Create test cases for code generation
     test_cases = [
-        TestCase(
+        PromptTestCase(
             input_variables={"language": "Python", "task": "sort a list"},
             expected_output="Python code that sorts a list",
             metadata={"language": "Python"}
         ),
-        TestCase(
+        PromptTestCase(
             input_variables={"language": "JavaScript", "task": "reverse a string"},
             expected_output="JavaScript code that reverses a string",
             metadata={"language": "JavaScript"}
         ),
-        TestCase(
+        PromptTestCase(
             input_variables={"language": "Python", "task": "find maximum in array"},
             expected_output="Python code that finds the maximum value in an array",
             metadata={"language": "Python"}

@@ -1,23 +1,26 @@
 """
-Tests for LLMResponse dataclass
+Tests for LLMResponse Pydantic model
 """
 
 import pytest
 from promptly.core.clients import LLMResponse
+from promptly.core.tracer import UsageData
 
 
 class TestLLMResponse:
-    """Test LLMResponse dataclass functionality"""
+    """Test LLMResponse Pydantic model functionality"""
 
     def test_llm_response_creation(self):
         """Test basic LLMResponse creation"""
         response = LLMResponse(
-            content="Test response", model="gpt-3.5-turbo", usage={"total_tokens": 10}
+            content="Test response", model="gpt-3.5-turbo", usage=UsageData(total_tokens=10)
         )
 
         assert response.content == "Test response"
         assert response.model == "gpt-3.5-turbo"
-        assert response.usage == {"total_tokens": 10}
+        assert response.usage.total_tokens == 10
+        assert response.usage.prompt_tokens == 0
+        assert response.usage.completion_tokens == 0
         assert response.metadata == {}
 
     def test_llm_response_with_metadata(self):
@@ -26,7 +29,7 @@ class TestLLMResponse:
         response = LLMResponse(
             content="Test response",
             model="gpt-3.5-turbo",
-            usage={"total_tokens": 10},
+            usage=UsageData(total_tokens=10),
             metadata=metadata,
         )
 
@@ -35,7 +38,7 @@ class TestLLMResponse:
     def test_llm_response_metadata_default(self):
         """Test that metadata defaults to empty dict"""
         response = LLMResponse(
-            content="Test response", model="gpt-3.5-turbo", usage={"total_tokens": 10}
+            content="Test response", model="gpt-3.5-turbo", usage=UsageData(total_tokens=10)
         )
 
         assert response.metadata == {}
@@ -47,12 +50,16 @@ class TestLLMResponse:
         response1 = LLMResponse(
             content="Test",
             model="gpt-3.5-turbo",
-            usage={"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
+            usage=UsageData(prompt_tokens=5, completion_tokens=3, total_tokens=8),
         )
-        assert response1.usage["total_tokens"] == 8
+        assert response1.usage.total_tokens == 8
+        assert response1.usage.prompt_tokens == 5
+        assert response1.usage.completion_tokens == 3
 
         # Test with minimal usage
         response2 = LLMResponse(
-            content="Test", model="gpt-3.5-turbo", usage={"total_tokens": 1}
+            content="Test", model="gpt-3.5-turbo", usage=UsageData(total_tokens=1)
         )
-        assert response2.usage["total_tokens"] == 1
+        assert response2.usage.total_tokens == 1
+        assert response2.usage.prompt_tokens == 0
+        assert response2.usage.completion_tokens == 0

@@ -10,7 +10,7 @@ from promptly.core.optimizer import (
     LLMGeneticOptimizer,
     LLMAccuracyFitnessFunction,
     LLMSemanticFitnessFunction,
-    TestCase,
+    PromptTestCase,
     OptimizationResult,
     FitnessEvaluation,
     LLMPromptMutator,
@@ -43,12 +43,12 @@ class MockLLMClient(BaseLLMClient):
         return ["mock-model"]
 
 
-class TestTestCase:
-    """Test TestCase dataclass"""
+class TestPromptTestCase:
+    """Test PromptTestCase Pydantic model"""
     
     def test_test_case_creation(self):
-        """Test TestCase creation"""
-        test_case = TestCase(
+        """Test PromptTestCase creation"""
+        test_case = PromptTestCase(
             input_variables={"question": "What is 2+2?"},
             expected_output="4",
             metadata={"difficulty": "easy"}
@@ -59,8 +59,8 @@ class TestTestCase:
         assert test_case.metadata == {"difficulty": "easy"}
     
     def test_test_case_defaults(self):
-        """Test TestCase with default values"""
-        test_case = TestCase(
+        """Test PromptTestCase with default values"""
+        test_case = PromptTestCase(
             input_variables={"question": "What is 2+2?"},
             expected_output="4"
         )
@@ -101,8 +101,8 @@ class TestLLMAccuracyFitnessFunction:
         
         prompt = PromptTemplate(template="Answer: {{question}}", name="test")
         test_cases = [
-            TestCase(input_variables={"question": "2+2"}, expected_output="4"),
-            TestCase(input_variables={"question": "3+3"}, expected_output="6"),
+            PromptTestCase(input_variables={"question": "2+2"}, expected_output="4"),
+            PromptTestCase(input_variables={"question": "3+3"}, expected_output="6"),
         ]
         
         # Mock the runner
@@ -386,7 +386,7 @@ class TestLLMGeneticOptimizer:
         
         base_prompt = PromptTemplate(template="Answer: {{question}}", name="base")
         test_cases = [
-            TestCase(input_variables={"question": "2+2"}, expected_output="4"),
+            PromptTestCase(input_variables={"question": "2+2"}, expected_output="4"),
         ]
         
         # Mock runner

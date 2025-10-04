@@ -17,7 +17,7 @@ from ..core.optimizer import (
     LLMGeneticOptimizer,
     LLMAccuracyFitnessFunction,
     LLMSemanticFitnessFunction,
-    TestCase,
+    PromptTestCase,
 )
 from ..core.templates import PromptTemplate
 
@@ -222,7 +222,7 @@ def optimize(
                 # Parse test cases
                 test_cases_list = []
                 for test_case in test_data["test_cases"]:
-                    test_cases_list.append(TestCase(
+                    test_cases_list.append(PromptTestCase(
                         input_variables=test_case["input_variables"],
                         expected_output=test_case["expected_output"],
                         metadata=test_case.get("metadata", {})

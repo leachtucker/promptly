@@ -266,7 +266,7 @@ import asyncio
 from promptly import (
     LLMGeneticOptimizer,
     LLMAccuracyFitnessFunction,
-    TestCase,
+    PromptTestCase,
     PromptTemplate,
     PromptRunner,
     OpenAIClient,
@@ -283,11 +283,11 @@ async def optimize_prompt():
     
     # Create test cases
     test_cases = [
-        TestCase(
+        PromptTestCase(
             input_variables={"question": "What is 2+2?"},
             expected_output="4"
         ),
-        TestCase(
+        PromptTestCase(
             input_variables={"question": "What is 3+3?"},
             expected_output="6"
         ),

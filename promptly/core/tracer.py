@@ -2,37 +2,68 @@ import sqlite3
 import json
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-from dataclasses import asdict
-from dataclasses import dataclass, field
 from pathlib import Path
+from pydantic import BaseModel, Field
 from .utils.env import get_env_var
 
-@dataclass
-class UsageData:
+class UsageData(BaseModel):
     """Trace statistics"""
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
 
-@dataclass
-class TraceRecord:
+class TraceRecord(BaseModel):
     """Single trace record"""
-
-    id: Optional[str] = None
+    id: Optional[int] = None
     prompt_name: str = ""
     prompt_template: str = ""
     rendered_prompt: str = ""
     response: str = ""
     model: str = ""
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=datetime.now)
     duration_ms: float = 0
-    usage: UsageData = field(default_factory=UsageData)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    usage: UsageData = Field(default_factory=UsageData)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
 
-    def __post_init__(self) -> None:
-        # Fields have default values, so no initialization needed
-        pass
+    @classmethod
+    def from_db_row(cls, row: sqlite3.Row) -> "TraceRecord":
+        """Create TraceRecord from database row with proper type conversion"""
+        # Convert timestamp
+        timestamp = datetime.fromisoformat(row["timestamp"]) if row["timestamp"] else datetime.now()
+        
+        # Parse JSON fields safely
+        usage = UsageData.model_validate_json(row["usage"]) if row["usage"] else UsageData()
+        metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+        
+        return cls(
+            id=row["id"],
+            prompt_name=row["prompt_name"],
+            prompt_template=row["prompt_template"],
+            rendered_prompt=row["rendered_prompt"],
+            response=row["response"],
+            model=row["model"],
+            timestamp=timestamp,
+            duration_ms=row["duration_ms"],
+            usage=usage,
+            metadata=metadata,
+            error=row["error"]
+        )
+    
+    def to_db_values(self) -> tuple:
+        """Convert to database values tuple"""
+        return (
+            self.prompt_name,
+            self.prompt_template,
+            self.rendered_prompt,
+            self.response,
+            self.model,
+            self.timestamp.isoformat(),
+            self.duration_ms,
+            self.usage.model_dump_json(),
+            json.dumps(self.metadata, default=str),
+            self.error,
+        )
 
 
 class Tracer:
@@ -86,23 +117,12 @@ class Tracer:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING *
             """,
-                (
-                    record.prompt_name,
-                    record.prompt_template,
-                    record.rendered_prompt,
-                    record.response,
-                    record.model,
-                    record.timestamp.isoformat(),
-                    record.duration_ms,
-                    json.dumps(asdict(record.usage)),
-                    json.dumps(record.metadata, default=str),
-                    record.error,
-                ),
+                record.to_db_values(),
             )
 
             row = cursor.fetchone()
             conn.commit()
-            return TraceRecord(**row)
+            return TraceRecord.from_db_row(row)
 
     def list_records(
         self,
@@ -143,8 +163,7 @@ class Tracer:
 
         records = []
         for row in rows:
-            record = TraceRecord(**row)
-            records.append(record)
+            records.append(TraceRecord.from_db_row(row))
 
         return records
 
@@ -158,12 +177,7 @@ class Tracer:
             if row is None:
                 return None
 
-            # Load JSON columns into their respective dataclass instances
-            usage_data = UsageData(**json.loads(row["usage"]))
-            row = {k: row[k] for k in row.keys() if k != "usage"}
-            row["usage"] = usage_data
-
-            return TraceRecord(**row)
+            return TraceRecord.from_db_row(row)
 
     def get_stats(self) -> Dict[str, Any]:
         """Get basic statistics"""

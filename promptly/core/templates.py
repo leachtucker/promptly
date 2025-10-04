@@ -2,18 +2,16 @@ from typing import Dict, Any, Optional, List
 import jinja2
 import json
 from datetime import datetime
-from dataclasses import dataclass, asdict, field
+from pydantic import BaseModel, Field
 
 
-@dataclass
-class PromptMetadata:
+class PromptMetadata(BaseModel):
     """Metadata for prompt templates"""
-
     name: str
     version: str = "1.0.0"
     description: str = ""
-    created_at: datetime = field(default_factory=datetime.now)
-    tags: List[str] = field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.now)
+    tags: List[str] = Field(default_factory=list)
 
 
 class PromptTemplate:
@@ -110,7 +108,7 @@ class PromptTemplate:
         return {
             "template": self.template,
             "name": self.name,
-            "metadata": asdict(self.metadata),
+            "metadata": self.metadata.model_dump(),
             "env_vars": self.env_vars,
         }
 

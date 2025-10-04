@@ -3,47 +3,48 @@ LLM-powered prompt optimization module
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Callable, Tuple
-from dataclasses import dataclass, field
+from typing import Dict, Any, Optional, List, Tuple
 import random
 import asyncio
 import json
 from datetime import datetime
+from pydantic import BaseModel, Field
 
 from .templates import PromptTemplate
-from .clients import BaseLLMClient, LLMResponse, OpenAIClient
+from .clients import BaseLLMClient, OpenAIClient
 from .runner import PromptRunner
-from .tracer import Tracer, TraceRecord
+from .tracer import Tracer
 
 
-@dataclass
-class OptimizationResult:
+class OptimizationResult(BaseModel):
     """Result of an optimization run"""
+    model_config = {"arbitrary_types_allowed": True}
+    
     best_prompt: PromptTemplate
     fitness_score: float
     generation: int
     population_size: int
     total_evaluations: int
     optimization_time: float
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-@dataclass
-class TestCase:
+class PromptTestCase(BaseModel):
     """A test case for prompt evaluation"""
     input_variables: Dict[str, Any]
     expected_output: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-@dataclass
-class FitnessEvaluation:
+class FitnessEvaluation(BaseModel):
     """Result of a fitness evaluation"""
+    model_config = {"arbitrary_types_allowed": True}
+    
     prompt: PromptTemplate
     score: float
     test_results: List[Dict[str, Any]]
     evaluation_reasoning: str  # LLM's reasoning for the score
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class LLMFitnessFunction(ABC):
@@ -57,7 +58,7 @@ class LLMFitnessFunction(ABC):
     async def evaluate(
         self, 
         prompt: PromptTemplate, 
-        test_cases: Optional[List[TestCase]] = None,
+        test_cases: Optional[List[PromptTestCase]] = None,
         runner: Optional[PromptRunner] = None,
         **kwargs: Any
     ) -> FitnessEvaluation:
@@ -71,7 +72,7 @@ class LLMAccuracyFitnessFunction(LLMFitnessFunction):
     async def evaluate(
         self,
         prompt: PromptTemplate,
-        test_cases: Optional[List[TestCase]] = None,
+        test_cases: Optional[List[PromptTestCase]] = None,
         runner: Optional[PromptRunner] = None,
         model: str = "gpt-3.5-turbo",
         **kwargs: Any
@@ -257,7 +258,7 @@ class LLMSemanticFitnessFunction(LLMFitnessFunction):
     async def evaluate(
         self,
         prompt: PromptTemplate,
-        test_cases: Optional[List[TestCase]] = None,
+        test_cases: Optional[List[PromptTestCase]] = None,
         runner: Optional[PromptRunner] = None,
         model: str = "gpt-3.5-turbo",
         **kwargs: Any
@@ -682,7 +683,7 @@ class LLMGeneticOptimizer:
     async def optimize(
         self,
         base_prompt: PromptTemplate,
-        test_cases: Optional[List[TestCase]] = None,
+        test_cases: Optional[List[PromptTestCase]] = None,
         runner: Optional[PromptRunner] = None,
         **kwargs: Any
     ) -> OptimizationResult:
@@ -775,7 +776,7 @@ class LLMGeneticOptimizer:
     
     async def _evaluate_population(
         self, 
-        test_cases: Optional[List[TestCase]], 
+        test_cases: Optional[List[PromptTestCase]], 
         runner: Optional[PromptRunner], 
         **kwargs: Any
     ) -> List[FitnessEvaluation]:

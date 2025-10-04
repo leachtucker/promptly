@@ -18,7 +18,7 @@ from .core.optimizer import (
     LLMGeneticOptimizer,
     LLMAccuracyFitnessFunction,
     LLMSemanticFitnessFunction,
-    TestCase,
+    PromptTestCase,
     OptimizationResult,
     FitnessEvaluation,
 )
@@ -36,7 +36,7 @@ __all__ = [
     "LLMGeneticOptimizer",
     "LLMAccuracyFitnessFunction",
     "LLMSemanticFitnessFunction",
-    "TestCase",
+    "PromptTestCase",
     "OptimizationResult",
     "FitnessEvaluation",
 ]
