@@ -1,6 +1,7 @@
 # promptly
 
 A lightweight, developer-friendly library for LLM prompt management, observability/tracing, and optimization.
+Currently with support for Python.
 
 ## Features
 
