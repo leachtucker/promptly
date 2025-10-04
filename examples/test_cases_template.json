@@ -1,0 +1,38 @@
+{
+  "description": "Template for creating test cases for prompt optimization",
+  "test_cases": [
+    {
+      "input_variables": {
+        "question": "What is 2+2?",
+        "context": "basic math"
+      },
+      "expected_output": "4",
+      "metadata": {
+        "difficulty": "easy",
+        "category": "arithmetic"
+      }
+    },
+    {
+      "input_variables": {
+        "question": "What is the capital of France?",
+        "context": "geography"
+      },
+      "expected_output": "Paris",
+      "metadata": {
+        "difficulty": "easy",
+        "category": "geography"
+      }
+    },
+    {
+      "input_variables": {
+        "question": "Explain photosynthesis",
+        "context": "biology"
+      },
+      "expected_output": "Photosynthesis is the process by which plants convert light energy into chemical energy",
+      "metadata": {
+        "difficulty": "medium",
+        "category": "science"
+      }
+    }
+  ]
+}

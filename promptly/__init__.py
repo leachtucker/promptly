@@ -12,15 +12,31 @@ load_env_for_promptly()
 
 from .core.runner import PromptRunner
 from .core.templates import PromptTemplate, PromptMetadata
-from .core.clients import BaseLLMClient, LLMResponse
+from .core.clients import BaseLLMClient, LLMResponse, OpenAIClient, AnthropicClient
 from .core.tracer import Tracer, TraceRecord
+from .core.optimizer import (
+    LLMGeneticOptimizer,
+    LLMAccuracyFitnessFunction,
+    LLMSemanticFitnessFunction,
+    TestCase,
+    OptimizationResult,
+    FitnessEvaluation,
+)
 
 __all__ = [
     "PromptRunner",
     "PromptTemplate",
     "PromptMetadata",
     "BaseLLMClient",
+    "OpenAIClient",
+    "AnthropicClient",
     "LLMResponse",
     "Tracer",
     "TraceRecord",
+    "LLMGeneticOptimizer",
+    "LLMAccuracyFitnessFunction",
+    "LLMSemanticFitnessFunction",
+    "TestCase",
+    "OptimizationResult",
+    "FitnessEvaluation",
 ]

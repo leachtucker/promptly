@@ -19,7 +19,7 @@ class TestBaseLLMClient:
     def test_base_client_is_abstract(self):
         """Test that BaseLLMClient cannot be instantiated directly"""
         with pytest.raises(TypeError):
-            BaseLLMClient()
+            BaseLLMClient() # type: ignore
 
 
 class TestOpenAIClient:
