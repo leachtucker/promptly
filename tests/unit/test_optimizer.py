@@ -15,6 +15,7 @@ from promptly.core.optimizer import (
     FitnessEvaluation,
     LLMPromptMutator,
     LLMPromptCrossover,
+    LLMPopulationGenerator,
 )
 from promptly.core.templates import PromptTemplate
 from promptly.core.clients import BaseLLMClient, LLMResponse
@@ -307,7 +308,8 @@ class TestLLMGeneticOptimizer:
         )
         
         base_prompt = PromptTemplate(template="Base prompt", name="base")
-        optimizer._initialize_population(base_prompt)
+        # Use the simple initialization method for this test
+        optimizer._initialize_population_simple(base_prompt)
         
         assert len(optimizer.population) == 5
         assert optimizer.population[0].template == "Base prompt"
@@ -481,3 +483,327 @@ class TestOptimizerIntegration:
         """Test that optimizer works with CLI interface"""
         # This would test the CLI integration
         pass
+
+
+class TestLLMPopulationGenerator:
+    """Test LLM population generator"""
+    
+    def test_population_generator_initialization(self):
+        """Test population generator initialization"""
+        mock_client = MockLLMClient()
+        generator = LLMPopulationGenerator(mock_client, "gpt-4")
+        
+        assert generator.generation_client == mock_client
+        assert generator.generation_model == "gpt-4"
+    
+    @pytest.mark.asyncio
+    async def test_generate_initial_population_success(self):
+        """Test successful population generation"""
+        # Mock LLM response with proper format
+        mock_response = """
+VARIATION 1:
+Please answer the following question: {{question}}
+
+VARIATION 2:
+Task: {{question}}
+
+VARIATION 3:
+{{question}}
+
+Please provide a detailed response.
+"""
+        
+        mock_client = MockLLMClient(responses=[mock_response])
+        generator = LLMPopulationGenerator(mock_client)
+        
+        base_prompt = PromptTemplate(
+            template="Answer this: {{question}}",
+            name="test_prompt"
+        )
+        
+        population = await generator.generate_initial_population(base_prompt, 4, 0.7)
+        
+        assert len(population) == 4
+        assert population[0].template == "Answer this: {{question}}"  # Original prompt
+        assert "{{question}}" in population[1].template
+        assert "{{question}}" in population[2].template
+        assert "{{question}}" in population[3].template
+        
+        # Check naming
+        assert population[1].name.startswith("test_prompt_llm_var_")
+        assert population[2].name.startswith("test_prompt_llm_var_")
+        assert population[3].name.startswith("test_prompt_llm_var_")
+    
+    @pytest.mark.asyncio
+    async def test_generate_initial_population_fallback(self):
+        """Test fallback to simple variations when LLM fails"""
+        # Mock client that raises an exception
+        mock_client = MockLLMClient()
+        mock_client.generate = AsyncMock(side_effect=Exception("API Error"))
+        
+        generator = LLMPopulationGenerator(mock_client)
+        
+        base_prompt = PromptTemplate(
+            template="Answer this: {{question}}",
+            name="test_prompt"
+        )
+        
+        population = await generator.generate_initial_population(base_prompt, 3, 0.7)
+        
+        assert len(population) == 3
+        assert population[0].template == "Answer this: {{question}}"  # Original prompt
+        assert population[1].name.startswith("test_prompt_fallback_var_")
+        assert population[2].name.startswith("test_prompt_fallback_var_")
+    
+    @pytest.mark.asyncio
+    async def test_generate_initial_population_parsing_fallback(self):
+        """Test fallback parsing when primary parsing fails"""
+        # Mock LLM response with poor format
+        mock_response = """
+Here are some variations:
+
+Answer the following question: {{question}}
+
+Please respond to: {{question}}
+
+Consider this question: {{question}}
+"""
+        
+        mock_client = MockLLMClient(responses=[mock_response])
+        generator = LLMPopulationGenerator(mock_client)
+        
+        base_prompt = PromptTemplate(
+            template="Answer this: {{question}}",
+            name="test_prompt"
+        )
+        
+        population = await generator.generate_initial_population(base_prompt, 4, 0.7)
+        
+        assert len(population) >= 2  # At least original + some variations
+        assert population[0].template == "Answer this: {{question}}"  # Original prompt
+    
+    def test_create_generation_prompt(self):
+        """Test prompt generation for LLM"""
+        mock_client = MockLLMClient()
+        generator = LLMPopulationGenerator(mock_client)
+        
+        base_prompt = PromptTemplate(
+            template="Answer this: {{question}}",
+            name="test_prompt"
+        )
+        
+        prompt = generator._create_generation_prompt(base_prompt, 3, 0.8)
+        
+        assert "Answer this: {{question}}" in prompt
+        assert "3" in prompt
+        assert "0.8" in prompt
+        assert "VARIATION 1:" in prompt
+        assert "VARIATION 2:" in prompt
+        assert "VARIATION 3:" in prompt
+    
+    def test_extract_variations_success(self):
+        """Test successful variation extraction"""
+        mock_client = MockLLMClient()
+        generator = LLMPopulationGenerator(mock_client)
+        
+        base_prompt = PromptTemplate(
+            template="Answer this: {{question}}",
+            name="test_prompt"
+        )
+        
+        response = """
+VARIATION 1:
+Please answer: {{question}}
+
+VARIATION 2:
+{{question}}
+
+Please provide details.
+"""
+        
+        variations = generator._extract_variations(response, base_prompt)
+        
+        assert len(variations) == 2
+        assert "Please answer: {{question}}" in variations[0].template
+        assert "{{question}}" in variations[1].template
+        assert "Please provide details." in variations[1].template
+    
+    def test_extract_variations_alternative_parsing(self):
+        """Test alternative parsing method"""
+        mock_client = MockLLMClient()
+        generator = LLMPopulationGenerator(mock_client)
+        
+        base_prompt = PromptTemplate(
+            template="Answer this: {{question}}",
+            name="test_prompt"
+        )
+        
+        response = """
+Answer the following question: {{question}}
+
+Please respond to: {{question}}
+
+Consider this question: {{question}}
+"""
+        
+        variations = generator._alternative_parsing(response, base_prompt)
+        
+        assert len(variations) >= 2
+        for variation in variations:
+            assert "{{question}}" in variation.template
+            assert variation.name.startswith("test_prompt_alt_var_")
+    
+    def test_fallback_simple_variations(self):
+        """Test fallback simple variations"""
+        mock_client = MockLLMClient()
+        generator = LLMPopulationGenerator(mock_client)
+        
+        base_prompt = PromptTemplate(
+            template="Answer this: {{question}}",
+            name="test_prompt"
+        )
+        
+        variations = generator._fallback_simple_variations(base_prompt, 4)
+        
+        assert len(variations) == 4
+        assert variations[0].template == "Answer this: {{question}}"  # Original
+        assert variations[1].name.startswith("test_prompt_fallback_var_")
+        assert variations[2].name.startswith("test_prompt_fallback_var_")
+        assert variations[3].name.startswith("test_prompt_fallback_var_")
+        
+        # Check that all variations contain the original template
+        for variation in variations:
+            assert "{{question}}" in variation.template or "answer this" in variation.template.lower()
+
+
+class TestLLMGeneticOptimizerWithPopulationGeneration:
+    """Test LLMGeneticOptimizer with LLM population generation"""
+    
+    @pytest.mark.asyncio
+    async def test_optimizer_with_llm_population_generation(self):
+        """Test optimizer initialization with LLM population generation"""
+        mock_client = MockLLMClient()
+        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        
+        optimizer = LLMGeneticOptimizer(
+            population_size=5,
+            generations=2,
+            fitness_function=fitness_function,
+            population_generator_client=mock_client,
+            use_llm_population_generation=True,
+            population_diversity_level=0.8
+        )
+        
+        assert optimizer.use_llm_population_generation is True
+        assert optimizer.population_diversity_level == 0.8
+        assert optimizer.population_generator is not None
+        assert optimizer.population_generator_client == mock_client
+    
+    @pytest.mark.asyncio
+    async def test_optimizer_without_llm_population_generation(self):
+        """Test optimizer initialization without LLM population generation"""
+        mock_client = MockLLMClient()
+        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        
+        optimizer = LLMGeneticOptimizer(
+            population_size=5,
+            generations=2,
+            fitness_function=fitness_function,
+            use_llm_population_generation=False
+        )
+        
+        assert optimizer.use_llm_population_generation is False
+        assert optimizer.population_generator is None
+        assert optimizer.population_generator_client is None
+    
+    @pytest.mark.asyncio
+    async def test_initialize_population_with_llm(self):
+        """Test population initialization using LLM"""
+        # Mock successful LLM response
+        mock_response = """
+VARIATION 1:
+Please answer: {{question}}
+
+VARIATION 2:
+{{question}}
+
+Provide details.
+
+VARIATION 3:
+Answer the following question: {{question}}
+
+Be specific and clear.
+"""
+        
+        mock_client = MockLLMClient(responses=[mock_response])
+        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        
+        optimizer = LLMGeneticOptimizer(
+            population_size=4,
+            generations=2,
+            fitness_function=fitness_function,
+            population_generator_client=mock_client,
+            use_llm_population_generation=True
+        )
+        
+        base_prompt = PromptTemplate(
+            template="Answer this: {{question}}",
+            name="test_prompt"
+        )
+        
+        await optimizer._initialize_population(base_prompt)
+        
+        assert len(optimizer.population) == 4
+        assert optimizer.population[0].template == "Answer this: {{question}}"
+        assert optimizer.population[1].name.startswith("test_prompt_llm_var_")
+    
+    @pytest.mark.asyncio
+    async def test_initialize_population_fallback_to_simple(self):
+        """Test fallback to simple variations when LLM fails"""
+        mock_client = MockLLMClient()
+        mock_client.generate = AsyncMock(side_effect=Exception("API Error"))
+        
+        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        
+        optimizer = LLMGeneticOptimizer(
+            population_size=4,
+            generations=2,
+            fitness_function=fitness_function,
+            population_generator_client=mock_client,
+            use_llm_population_generation=True
+        )
+        
+        base_prompt = PromptTemplate(
+            template="Answer this: {{question}}",
+            name="test_prompt"
+        )
+        
+        await optimizer._initialize_population(base_prompt)
+        
+        assert len(optimizer.population) == 4
+        assert optimizer.population[0].template == "Answer this: {{question}}"
+        assert optimizer.population[1].name.startswith("test_prompt_fallback_var_")
+    
+    @pytest.mark.asyncio
+    async def test_initialize_population_simple_when_disabled(self):
+        """Test simple population initialization when LLM generation is disabled"""
+        mock_client = MockLLMClient()
+        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        
+        optimizer = LLMGeneticOptimizer(
+            population_size=4,
+            generations=2,
+            fitness_function=fitness_function,
+            use_llm_population_generation=False
+        )
+        
+        base_prompt = PromptTemplate(
+            template="Answer this: {{question}}",
+            name="test_prompt"
+        )
+        
+        await optimizer._initialize_population(base_prompt)
+        
+        assert len(optimizer.population) == 4
+        assert optimizer.population[0].template == "Answer this: {{question}}"
+        assert optimizer.population[1].name.startswith("test_prompt_var_")

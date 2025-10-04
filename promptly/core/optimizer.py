@@ -16,6 +16,46 @@ from .runner import PromptRunner
 from .tracer import Tracer
 
 
+class ProgressCallback(ABC):
+    """Abstract base class for optimization progress callbacks"""
+    
+    @abstractmethod
+    async def on_population_initialized(self, population_size: int) -> None:
+        """Called when initial population is created"""
+        pass
+    
+    @abstractmethod
+    async def on_generation_start(self, generation: int, total_generations: int) -> None:
+        """Called at the start of each generation"""
+        pass
+    
+    @abstractmethod
+    async def on_generation_complete(self, stats: Dict[str, Any]) -> None:
+        """Called when a generation completes with statistics"""
+        pass
+    
+    @abstractmethod
+    async def on_optimization_complete(self, result: 'OptimizationResult') -> None:
+        """Called when optimization completes"""
+        pass
+
+
+class NoOpProgressCallback(ProgressCallback):
+    """No-op implementation for when no callback is provided"""
+    
+    async def on_population_initialized(self, population_size: int) -> None:
+        pass
+    
+    async def on_generation_start(self, generation: int, total_generations: int) -> None:
+        pass
+    
+    async def on_generation_complete(self, stats: Dict[str, Any]) -> None:
+        pass
+    
+    async def on_optimization_complete(self, result: 'OptimizationResult') -> None:
+        pass
+
+
 class OptimizationResult(BaseModel):
     """Result of an optimization run"""
     model_config = {"arbitrary_types_allowed": True}
@@ -453,7 +493,7 @@ class LLMPromptMutator:
                 metadata=prompt.metadata
             )
             
-        except Exception as e:
+        except Exception:
             # Fallback to simple mutation
             return self._simple_mutation(prompt)
     
@@ -526,6 +566,197 @@ Provide only the improved prompt template, no explanations or additional text.
         )
 
 
+class LLMPopulationGenerator:
+    """LLM-powered initial population generator"""
+    
+    def __init__(self, generation_client: BaseLLMClient, generation_model: str = "gpt-4"):
+        self.generation_client = generation_client
+        self.generation_model = generation_model
+    
+    async def generate_initial_population(
+        self, 
+        base_prompt: PromptTemplate, 
+        population_size: int,
+        diversity_level: float = 0.7
+    ) -> List[PromptTemplate]:
+        """Generate diverse initial population using LLM"""
+        
+        generation_prompt = self._create_generation_prompt(base_prompt, population_size - 1, diversity_level)
+        
+        try:
+            response = await self.generation_client.generate(
+                prompt=generation_prompt,
+                model=self.generation_model,
+                temperature=0.7 + diversity_level * 0.3,
+                max_tokens=2000
+            )
+            
+            variations = self._extract_variations(response.content, base_prompt)
+            
+            # Add the original prompt as the first member
+            population = [base_prompt] + variations
+            
+            return population[:population_size]
+            
+        except Exception:
+            # Fallback to simple variations
+            return self._fallback_simple_variations(base_prompt, population_size)
+    
+    def _create_generation_prompt(self, base_prompt: PromptTemplate, num_variations: int, diversity_level: float) -> str:
+        """Create prompt for LLM population generation"""
+        return f"""
+You are an expert prompt engineer. Create {num_variations} diverse variations of the following prompt template.
+
+ORIGINAL PROMPT:
+{base_prompt.template}
+
+DIVERSITY LEVEL: {diversity_level} (0.0 = subtle variations, 1.0 = very diverse)
+
+Create variations that explore different approaches:
+1. Different structural patterns (question format, instruction format, conversational, etc.)
+2. Various instruction styles (direct, polite, detailed, concise)
+3. Different levels of detail and specificity
+4. Alternative phrasings and word choices
+5. Different emphasis on clarity vs. brevity
+6. Various ways to handle the same core task
+7. Different prompt engineering techniques (few-shot, chain-of-thought, etc.)
+
+CONSTRAINTS:
+- Keep the same template variables ({{variable_name}}) exactly as they appear
+- Maintain the core purpose and functionality of the original prompt
+- Each variation should be complete and usable
+- Make each variation distinct and valuable
+- Ensure all variations can handle the same inputs and produce similar outputs
+
+Format your response as:
+VARIATION 1:
+[first prompt template]
+
+VARIATION 2:
+[second prompt template]
+
+...
+
+VARIATION {num_variations}:
+[{num_variations}th prompt template]
+"""
+    
+    def _extract_variations(self, response: str, base_prompt: PromptTemplate) -> List[PromptTemplate]:
+        """Extract variations from LLM response"""
+        variations = []
+        
+        try:
+            # Split by "VARIATION X:" markers
+            parts = response.split('VARIATION ')
+            for i, part in enumerate(parts[1:], 1):  # Skip first empty part
+                lines = part.split('\n')
+                # Find the content after "VARIATION X:"
+                content_lines = []
+                found_start = False
+                
+                for line in lines:
+                    if ':' in line and not found_start:
+                        # Found the marker, get content after colon
+                        marker_content = line.split(':', 1)[1].strip()
+                        if marker_content:
+                            content_lines.append(marker_content)
+                        found_start = True
+                    elif found_start:
+                        content_lines.append(line)
+                
+                if content_lines:
+                    template_content = '\n'.join(content_lines).strip()
+                    if template_content:
+                        variations.append(PromptTemplate(
+                            template=template_content,
+                            name=f"{base_prompt.name}_llm_var_{i}",
+                            metadata=base_prompt.metadata
+                        ))
+            
+            # If parsing failed, try alternative approach
+            if not variations:
+                variations = self._alternative_parsing(response, base_prompt)
+                
+        except Exception:
+            # Fallback to alternative parsing
+            variations = self._alternative_parsing(response, base_prompt)
+        
+        return variations
+    
+    def _alternative_parsing(self, response: str, base_prompt: PromptTemplate) -> List[PromptTemplate]:
+        """Alternative parsing method if primary method fails"""
+        variations = []
+        
+        # Try to find prompt-like content by looking for template variables
+        lines = response.split('\n')
+        current_variation = []
+        
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('VARIATION') and not line.startswith('You are'):
+                current_variation.append(line)
+            elif current_variation:
+                # Found a complete variation
+                template_content = '\n'.join(current_variation).strip()
+                if template_content and ('{' in template_content and '}' in template_content):
+                    variations.append(PromptTemplate(
+                        template=template_content,
+                        name=f"{base_prompt.name}_alt_var_{len(variations) + 1}",
+                        metadata=base_prompt.metadata
+                    ))
+                current_variation = []
+        
+        # Handle last variation
+        if current_variation:
+            template_content = '\n'.join(current_variation).strip()
+            if template_content and ('{' in template_content and '}' in template_content):
+                variations.append(PromptTemplate(
+                    template=template_content,
+                    name=f"{base_prompt.name}_alt_var_{len(variations) + 1}",
+                    metadata=base_prompt.metadata
+                ))
+        
+        return variations
+    
+    def _fallback_simple_variations(self, base_prompt: PromptTemplate, population_size: int) -> List[PromptTemplate]:
+        """Fallback to simple variations if LLM generation fails"""
+        variations = []
+        template = base_prompt.template
+        
+        # Create simple variations similar to the original method
+        simple_variations = [
+            f"Please {template.lower()}",
+            f"Task: {template}",
+            f"{template}\n\nBe precise and clear.",
+            f"{template}\n\nProvide specific details.",
+            f"{template}\n\nThink step by step.",
+            f"Answer the following: {template}",
+            f"{template}\n\nUse examples when helpful.",
+            f"Consider this carefully: {template}",
+            f"{template}\n\nBe thorough in your response.",
+            f"Please provide a detailed response to: {template}",
+        ]
+        
+        # Add original prompt first
+        variations.append(base_prompt)
+        
+        # Add variations up to population size
+        for i in range(1, population_size):
+            if i <= len(simple_variations):
+                variation_template = simple_variations[i - 1]
+            else:
+                # Cycle through variations if we need more
+                variation_template = simple_variations[(i - 1) % len(simple_variations)]
+            
+            variations.append(PromptTemplate(
+                template=variation_template,
+                name=f"{base_prompt.name}_fallback_var_{i}",
+                metadata=base_prompt.metadata
+            ))
+        
+        return variations[:population_size]
+
+
 class LLMPromptCrossover:
     """LLM-powered prompt crossover"""
     
@@ -565,7 +796,7 @@ class LLMPromptCrossover:
                 )
             )
             
-        except Exception as e:
+        except Exception:
             # Fallback to simple crossover
             return self._simple_crossover(parent1, parent2)
     
@@ -646,8 +877,12 @@ class LLMGeneticOptimizer:
         elite_size: int = 2,
         mutation_client: Optional[BaseLLMClient] = None,
         crossover_client: Optional[BaseLLMClient] = None,
+        population_generator_client: Optional[BaseLLMClient] = None,
         eval_client: Optional[BaseLLMClient] = None,
         tracer: Optional[Tracer] = None,
+        use_llm_population_generation: bool = True,
+        population_diversity_level: float = 0.7,
+        progress_callback: Optional[ProgressCallback] = None,
         **kwargs: Any
     ):
         self.eval_client = eval_client or OpenAIClient()
@@ -659,12 +894,18 @@ class LLMGeneticOptimizer:
         self.crossover_rate = crossover_rate
         self.elite_size = elite_size
         self.tracer = tracer or Tracer()
+        self.progress_callback = progress_callback or NoOpProgressCallback()
         
-        # LLM clients for mutation and crossover
+        # LLM clients for mutation, crossover, and population generation
         self.mutation_client = mutation_client
         self.crossover_client = crossover_client
+        self.population_generator_client = population_generator_client
         
-        # Initialize mutators and crossovers
+        # Population generation settings
+        self.use_llm_population_generation = use_llm_population_generation
+        self.population_diversity_level = population_diversity_level
+        
+        # Initialize mutators, crossovers, and population generator
         if self.mutation_client:
             self.mutator = LLMPromptMutator(self.mutation_client)
         else:
@@ -675,10 +916,16 @@ class LLMGeneticOptimizer:
         else:
             self.crossover = None
         
+        if self.population_generator_client and self.use_llm_population_generation:
+            self.population_generator = LLMPopulationGenerator(self.population_generator_client)
+        else:
+            self.population_generator = None
+        
         # Internal state
         self.current_generation = 0
         self.population: List[PromptTemplate] = []
         self.fitness_scores: List[float] = []
+        self._current_generation_stats: Optional[Dict[str, Any]] = None
         
     async def optimize(
         self,
@@ -693,11 +940,13 @@ class LLMGeneticOptimizer:
         total_evaluations = 0
         
         # Initialize population
-        self._initialize_population(base_prompt)
+        await self._initialize_population(base_prompt)
+        await self.progress_callback.on_population_initialized(len(self.population))
         
         # Evolution loop
         for generation in range(self.generations):
             self.current_generation = generation
+            await self.progress_callback.on_generation_start(generation, self.generations)
             
             # Evaluate fitness for all individuals using LLM
             evaluations = await self._evaluate_population(
@@ -714,6 +963,8 @@ class LLMGeneticOptimizer:
             
             # Log progress
             await self._log_generation_progress(generation, best_evaluation)
+            if self._current_generation_stats is not None:
+                await self.progress_callback.on_generation_complete(self._current_generation_stats)
             
             # Create next generation (except for last generation)
             if generation < self.generations - 1:
@@ -723,7 +974,7 @@ class LLMGeneticOptimizer:
         optimization_time = (datetime.now() - start_time).total_seconds()
         best_prompt = best_evaluation.prompt
         
-        return OptimizationResult(
+        result = OptimizationResult(
             best_prompt=best_prompt,
             fitness_score=best_evaluation.score,
             generation=self.current_generation,
@@ -734,12 +985,34 @@ class LLMGeneticOptimizer:
                 "mutation_rate": self.mutation_rate,
                 "crossover_rate": self.crossover_rate,
                 "elite_size": self.elite_size,
-                "llm_powered": True
+                "llm_powered": True,
+                "llm_population_generation": self.use_llm_population_generation and self.population_generator is not None,
+                "population_diversity_level": self.population_diversity_level
             }
         )
+        
+        await self.progress_callback.on_optimization_complete(result)
+        return result
     
-    def _initialize_population(self, base_prompt: PromptTemplate) -> None:
-        """Initialize population with variations of the base prompt"""
+    async def _initialize_population(self, base_prompt: PromptTemplate) -> None:
+        """Initialize population with LLM-generated or simple variations of the base prompt"""
+        if self.population_generator:
+            try:
+                self.population = await self.population_generator.generate_initial_population(
+                    base_prompt, 
+                    self.population_size,
+                    self.population_diversity_level
+                )
+                return
+            except Exception:
+                # Fallback to simple variations on error
+                pass
+        
+        # Fallback to simple variations
+        self._initialize_population_simple(base_prompt)
+    
+    def _initialize_population_simple(self, base_prompt: PromptTemplate) -> None:
+        """Initialize population with simple rule-based variations"""
         self.population = []
         
         # Add the original prompt
@@ -865,14 +1138,18 @@ class LLMGeneticOptimizer:
         )
     
     async def _log_generation_progress(self, generation: int, best_evaluation: FitnessEvaluation) -> None:
-        """Log progress of optimization"""
+        """Log progress of optimization - console output removed, functionality preserved"""
+        # Calculate metrics for internal tracking (no console output)
         avg_fitness = sum(self.fitness_scores) / len(self.fitness_scores) if self.fitness_scores else 0
         max_fitness = max(self.fitness_scores) if self.fitness_scores else 0
         
-        print(f"Generation {generation + 1}/{self.generations}")
-        print(f"  Best fitness: {best_evaluation.score:.3f}")
-        print(f"  Average fitness: {avg_fitness:.3f}")
-        print(f"  Max fitness: {max_fitness:.3f}")
-        print(f"  Best prompt: {best_evaluation.prompt.template[:100]}...")
-        print(f"  Reasoning: {best_evaluation.evaluation_reasoning[:100]}...")
-        print()
+        # Store progress data in optimizer state for potential future use
+        # This preserves the calculation logic without outputting to console
+        self._current_generation_stats = {
+            'generation': generation + 1,
+            'best_fitness': best_evaluation.score,
+            'avg_fitness': avg_fitness,
+            'max_fitness': max_fitness,
+            'best_prompt': best_evaluation.prompt.template,
+            'reasoning': best_evaluation.evaluation_reasoning
+        }

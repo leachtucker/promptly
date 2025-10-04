@@ -4,6 +4,9 @@ Command-line interface for promptly
 
 from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TaskID
+from rich import box
 
 
 import click
@@ -18,9 +21,57 @@ from ..core.optimizer import (
     LLMAccuracyFitnessFunction,
     LLMSemanticFitnessFunction,
     PromptTestCase,
+    ProgressCallback,
+    OptimizationResult,
 )
 from ..core.templates import PromptTemplate
 
+
+class RichProgressCallback(ProgressCallback):
+    """Rich-based progress callback for CLI optimization feedback"""
+    
+    def __init__(self, console: Console, progress: Progress, task_id: TaskID):
+        self.console = console
+        self.progress = progress
+        self.task_id = task_id
+    
+    async def on_population_initialized(self, population_size: int) -> None:
+        """Called when initial population is created"""
+        self.console.print(f"[bold green]✅ Generated {population_size} initial variations[/bold green]")
+        self.console.print()
+    
+    async def on_generation_start(self, generation: int, total_generations: int) -> None:
+        """Called at the start of each generation"""
+        # Update progress description
+        self.progress.update(
+            self.task_id, 
+            description=f"Generation {generation + 1}/{total_generations} - Evaluating population..."
+        )
+    
+    async def on_generation_complete(self, stats: dict) -> None:
+        """Called when a generation completes with statistics"""
+        generation = stats['generation']
+        best_fitness = stats['best_fitness']
+        avg_fitness = stats['avg_fitness']
+        
+        # Update progress bar
+        self.progress.update(
+            self.task_id,
+            description=f"Generation {generation} - Best: {best_fitness:.3f}, Avg: {avg_fitness:.3f}"
+        )
+        
+        # Show generation stats in a compact format
+        fitness_color = "green" if best_fitness >= 0.8 else "yellow" if best_fitness >= 0.6 else "red"
+        self.console.print(f"[dim]Gen {generation}: Best=[{fitness_color}]{best_fitness:.3f}[/{fitness_color}], Avg={avg_fitness:.3f}[/dim]")
+    
+    async def on_optimization_complete(self, result: OptimizationResult) -> None:
+        """Called when optimization completes"""
+        # Complete the progress bar
+        self.progress.update(
+            self.task_id,
+            completed=100,
+            description="Optimization complete!"
+        )
 
 
 @click.group()
@@ -192,6 +243,9 @@ def trace(trace_id: Optional[str]) -> None:
 @click.option("--trace", is_flag=True, help="Enable tracing", default=True)
 @click.option("--output", "-o", help="Output file to save the optimized prompt")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt and proceed automatically")
+@click.option("--use-llm-population", is_flag=True, default=True, help="Use LLM to generate initial population variations")
+@click.option("--population-diversity", default=0.7, help="Diversity level for LLM population generation (0.0-1.0)")
+@click.option("--pop-gen-model", default="gpt-4", help="Model to use for population generation")
 def optimize(
     base_prompt: str,
     test_cases: str,
@@ -208,6 +262,9 @@ def optimize(
     trace: bool,
     output: Optional[str],
     yes: bool,
+    use_llm_population: bool,
+    population_diversity: float,
+    pop_gen_model: str,
 ) -> None:
     """Optimize a prompt using LLM-powered genetic algorithm"""
     
@@ -238,11 +295,13 @@ def optimize(
                 eval_client = OpenAIClient(api_key=api_key)
                 mutation_client = OpenAIClient(api_key=api_key)
                 crossover_client = OpenAIClient(api_key=api_key)
+                population_generator_client = OpenAIClient(api_key=api_key)
             elif provider == "anthropic":
                 main_client = AnthropicClient(api_key=api_key)
                 eval_client = AnthropicClient(api_key=api_key)
                 mutation_client = AnthropicClient(api_key=api_key)
                 crossover_client = AnthropicClient(api_key=api_key)
+                population_generator_client = AnthropicClient(api_key=api_key)
             else:
                 click.echo(f"Unsupported provider: {provider}")
                 return
@@ -263,7 +322,7 @@ def optimize(
                 click.echo(f"Unsupported fitness type: {fitness_type}")
                 return
             
-            # Initialize optimizer
+            # Initialize optimizer (callback will be set later)
             optimizer = LLMGeneticOptimizer(
                 population_size=population_size,
                 generations=generations,
@@ -273,7 +332,11 @@ def optimize(
                 elite_size=elite_size,
                 mutation_client=mutation_client,
                 crossover_client=crossover_client,
-                tracer=tracer
+                population_generator_client=population_generator_client if use_llm_population else None,
+                eval_client=eval_client,
+                tracer=tracer,
+                use_llm_population_generation=use_llm_population,
+                population_diversity_level=population_diversity
             )
             
             # Calculate and display API call estimates
@@ -285,72 +348,179 @@ def optimize(
                 mutation_client=mutation_client is not None,
                 crossover_client=crossover_client is not None,
                 mutation_rate=mutation_rate,
-                crossover_rate=crossover_rate
+                crossover_rate=crossover_rate,
+                use_llm_population=use_llm_population
             )
             
-            click.echo("Optimization Configuration:")
-            click.echo(f"Population size: {population_size}")
-            click.echo(f"Generations: {generations}")
-            click.echo(f"Fitness type: {fitness_type}")
+            console = Console()
+            
+            # Welcome banner
+            console.print(Panel.fit(
+                "[bold blue]🧬 Promptly Genetic Optimizer[/bold blue]\n"
+                "[dim]Powered by LLM-driven evolution[/dim]",
+                border_style="blue"
+            ))
+            console.print()
+            
+            # Configuration panel
+            config_table = Table(title="⚙️ Optimization Configuration", box=box.ROUNDED)
+            config_table.add_column("Parameter", style="cyan", no_wrap=True)
+            config_table.add_column("Value", style="white")
+            
+            config_table.add_row("Population Size", f"[bold green]{population_size}[/bold green]")
+            config_table.add_row("Generations", f"[bold green]{generations}[/bold green]")
+            config_table.add_row("Fitness Type", f"[bold blue]{fitness_type}[/bold blue]")
+            
+            llm_pop_status = "[bold green]✅ Enabled[/bold green]" if use_llm_population else "[bold red]❌ Disabled[/bold red]"
+            config_table.add_row("LLM Population Generation", llm_pop_status)
+            
+            if use_llm_population:
+                config_table.add_row("Population Diversity", f"[bold green]{population_diversity}[/bold green]")
+                config_table.add_row("Population Generation Model", f"[bold blue]{pop_gen_model}[/bold blue]")
+            
             if test_cases_list:
-                click.echo(f"Test cases: {len(test_cases_list)}")
-                click.echo("Mode: Test case-based optimization")
+                config_table.add_row("Test Cases", f"[bold green]{len(test_cases_list)}[/bold green]")
+                config_table.add_row("Mode", "[bold blue]Test case-based optimization[/bold blue]")
             else:
-                click.echo("Mode: Quality-based optimization")
-            click.echo()
+                config_table.add_row("Mode", "[bold blue]Quality-based optimization[/bold blue]")
             
-            click.echo("API Call Estimates:")
-            click.echo(f"Evaluation calls: {api_calls['evaluation']}")
-            click.echo(f"Mutation calls: {api_calls['mutation']}")
-            click.echo(f"Crossover calls: {api_calls['crossover']}")
-            click.echo(f"Prompt execution calls: {api_calls['execution']}")
-            click.echo(f"TOTAL API CALLS: {api_calls['total']}")
+            console.print(config_table)
+            console.print()
             
-            # Add cost estimation
+            # API call estimates table
+            api_table = Table(title="📊 API Call Estimates", box=box.ROUNDED)
+            api_table.add_column("Operation", style="cyan", no_wrap=True)
+            api_table.add_column("Calls", style="green", justify="right")
+            
+            api_table.add_row("🧬 Population Generation", f"[bold green]{api_calls['population_generation']}[/bold green]")
+            api_table.add_row("🎯 Evaluation", f"[bold green]{api_calls['evaluation']}[/bold green]")
+            api_table.add_row("🔄 Mutation", f"[bold green]{api_calls['mutation']}[/bold green]")
+            api_table.add_row("🔀 Crossover", f"[bold green]{api_calls['crossover']}[/bold green]")
+            api_table.add_row("⚡ Prompt Execution", f"[bold green]{api_calls['execution']}[/bold green]")
+            api_table.add_row("", "", style="dim")  # Separator
+            api_table.add_row("[bold white]TOTAL API CALLS[/bold white]", f"[bold yellow]{api_calls['total']}[/bold yellow]")
+            
+            console.print(api_table)
+            console.print()
+            
+            # Cost estimation
             cost_estimate = _estimate_cost(api_calls, eval_model, model)
             if cost_estimate:
-                click.echo()
-                click.echo("Estimated Cost:")
-                click.echo(f"Evaluation model ({eval_model}): ~${cost_estimate['eval_cost']:.2f}")
+                cost_table = Table(title="💰 Estimated Cost Breakdown", box=box.ROUNDED)
+                cost_table.add_column("Model/Operation", style="cyan", no_wrap=True)
+                cost_table.add_column("Estimated Cost", style="green", justify="right")
+                
+                cost_table.add_row(f"🎯 Evaluation ({eval_model})", f"[bold green]~${cost_estimate['eval_cost']:.2f}[/bold green]")
                 if cost_estimate['execution_cost'] > 0:
-                    click.echo(f"Execution model ({model}): ~${cost_estimate['execution_cost']:.2f}")
+                    cost_table.add_row(f"⚡ Execution ({model})", f"[bold green]~${cost_estimate['execution_cost']:.2f}[/bold green]")
                 if cost_estimate['mutation_cost'] > 0:
-                    click.echo(f"Mutation model: ~${cost_estimate['mutation_cost']:.2f}")
+                    cost_table.add_row("🔄 Mutation", f"[bold green]~${cost_estimate['mutation_cost']:.2f}[/bold green]")
                 if cost_estimate['crossover_cost'] > 0:
-                    click.echo(f"Crossover model: ~${cost_estimate['crossover_cost']:.2f}")
-                click.echo(f"TOTAL ESTIMATED COST: ~${cost_estimate['total_cost']:.2f}")
-                click.echo("(Note: Actual costs may vary based on token usage)")
-            click.echo()
+                    cost_table.add_row("🔀 Crossover", f"[bold green]~${cost_estimate['crossover_cost']:.2f}[/bold green]")
+                cost_table.add_row("", "", style="dim")  # Separator
+                cost_table.add_row("[bold white]TOTAL ESTIMATED COST[/bold white]", f"[bold yellow]~${cost_estimate['total_cost']:.2f}[/bold yellow]")
+                
+                console.print(cost_table)
+                console.print("[dim](Note: Actual costs may vary based on token usage)[/dim]")
+                console.print()
             
             # Ask for confirmation (unless --yes flag is used)
             if not yes:
-                if not click.confirm("Do you want to proceed with the optimization?"):
-                    click.echo("Optimization cancelled.")
+                console.print(Panel(
+                    "[bold green]🚀 Ready to evolve your prompt![/bold green]\n\n"
+                    "The genetic algorithm will now begin optimizing your prompt through:\n"
+                    "• 🧬 Intelligent population generation\n"
+                    "• 🎯 LLM-powered fitness evaluation\n"
+                    "• 🔄 Smart mutation and crossover\n"
+                    "• 🏆 Elite selection and evolution",
+                    title="Optimization Ready",
+                    border_style="green"
+                ))
+                console.print()
+                
+                console.print("[bold cyan]Do you want to proceed with the optimization?[/bold cyan]")
+                if not click.confirm(""):
+                    console.print("[bold red]❌ Optimization cancelled.[/bold red]")
                     return
             else:
-                click.echo("Proceeding automatically (--yes flag provided)")
+                console.print("[bold green]✅ Proceeding automatically (--yes flag provided)[/bold green]")
+                console.print()
             
-            # Run optimization
-            result = await optimizer.optimize(base_template, test_cases_list, runner, model=model)
+            # Run optimization with progress indication
+            console.print()
+            console.print("[bold cyan]🚀 Starting genetic optimization...[/bold cyan]")
+            console.print("[dim]This may take a few minutes depending on population size and generations.[/dim]")
+            console.print()
             
-            # Display results
-            click.echo("Optimization completed!")
-            click.echo(f"Best fitness score: {result.fitness_score:.3f}")
-            click.echo(f"Total evaluations: {result.total_evaluations}")
-            click.echo(f"Optimization time: {result.optimization_time:.2f}s")
-            click.echo()
-            click.echo("Best prompt:")
-            click.echo("=" * 50)
-            click.echo(result.best_prompt.template)
-            click.echo("=" * 50)
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
+                console=console,
+                transient=True
+            ) as progress:
+                optimization_task = progress.add_task("Optimizing prompt...", total=100)
+                
+                # Create and set the progress callback
+                progress_callback = RichProgressCallback(console, progress, optimization_task)
+                optimizer.progress_callback = progress_callback
+                
+                # Start optimization
+                result = await optimizer.optimize(base_template, test_cases_list, runner, model=model)
+            
+            # Display results with celebration
+            console.print()
+            console.print(Panel.fit(
+                "[bold green]🎉 Optimization Complete![/bold green]\n"
+                "[dim]Your prompt has evolved to perfection![/dim]",
+                border_style="green"
+            ))
+            console.print()
+            
+            # Results summary table
+            results_table = Table(title="🏆 Optimization Results", box=box.ROUNDED)
+            results_table.add_column("Metric", style="cyan", no_wrap=True)
+            results_table.add_column("Value", style="white", justify="right")
+            
+            # Fitness score with color coding
+            fitness_color = "green" if result.fitness_score >= 0.8 else "yellow" if result.fitness_score >= 0.6 else "red"
+            results_table.add_row("🎯 Best Fitness Score", f"[bold {fitness_color}]{result.fitness_score:.3f}[/bold {fitness_color}]")
+            
+            results_table.add_row("🧬 Total Evaluations", f"[bold green]{result.total_evaluations}[/bold green]")
+            results_table.add_row("⏱️ Optimization Time", f"[bold green]{result.optimization_time:.2f}s[/bold green]")
+            results_table.add_row("🔄 Generations", f"[bold green]{result.generation + 1}[/bold green]")
+            results_table.add_row("👥 Population Size", f"[bold green]{result.population_size}[/bold green]")
+            
+            if result.metadata.get('llm_population_generation'):
+                results_table.add_row("🧬 LLM Population Gen", "[bold green]✅ Used[/bold green]")
+            
+            console.print(results_table)
+            console.print()
+            
+            # Best prompt display
+            console.print(Panel(
+                f"[bold blue]{result.best_prompt.template}[/bold blue]",
+                title="🏆 Optimized Prompt",
+                border_style="blue",
+                expand=False
+            ))
+            console.print()
             
             # Save to file if requested
             if output:
                 result.best_prompt.save(output)
-                click.echo(f"Optimized prompt saved to: {output}")
+                console.print(f"[bold green]💾 Optimized prompt saved to: [cyan]{output}[/cyan][/bold green]")
+                console.print()
             
         except Exception as e:
-            click.echo(f"Error during optimization: {e}")
+            console.print(Panel(
+                f"[bold red]❌ Error during optimization[/bold red]\n\n"
+                f"[red]{str(e)}[/red]",
+                title="Optimization Failed",
+                border_style="red"
+            ))
             raise
     
     asyncio.run(_run_optimization())
@@ -364,7 +534,8 @@ def _calculate_api_calls(
     mutation_client: bool,
     crossover_client: bool,
     mutation_rate: float,
-    crossover_rate: float
+    crossover_rate: float,
+    use_llm_population: bool = False
 ) -> dict:
     """Calculate estimated API calls for optimization"""
     
@@ -393,13 +564,20 @@ def _calculate_api_calls(
         # Each crossover produces 2 offspring, so we need crossover_rate * population_size / 2 crossover operations
         crossover_calls = int(generations * population_size * crossover_rate * 0.5)
     
-    total_calls = evaluation_calls + execution_calls + mutation_calls + crossover_calls
+    # Population generation calls (only once at the beginning)
+    population_generation_calls = 0
+    if use_llm_population:
+        # One call to generate the initial population (minus the original prompt)
+        population_generation_calls = 1
+    
+    total_calls = evaluation_calls + execution_calls + mutation_calls + crossover_calls + population_generation_calls
     
     return {
         "evaluation": evaluation_calls,
         "execution": execution_calls,
         "mutation": mutation_calls,
         "crossover": crossover_calls,
+        "population_generation": population_generation_calls,
         "total": total_calls
     }
 
