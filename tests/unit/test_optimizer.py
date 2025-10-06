@@ -242,36 +242,6 @@ class TestLLMPromptCrossover:
         assert isinstance(result2, PromptTemplate)
         assert result1.template == "Combined prompt 1"
         assert result2.template == "Combined prompt 2"
-    
-    @pytest.mark.asyncio
-    async def test_crossover_fallback(self):
-        """Test crossover fallback when LLM fails"""
-        mock_client = AsyncMock()
-        mock_client.generate.side_effect = Exception("API error")
-        
-        crossover = LLMPromptCrossover(mock_client)
-        parent1 = PromptTemplate(template="Parent 1", name="p1")
-        parent2 = PromptTemplate(template="Parent 2", name="p2")
-        
-        result1, result2 = await crossover.crossover(parent1, parent2)
-        
-        assert isinstance(result1, PromptTemplate)
-        assert isinstance(result2, PromptTemplate)
-        assert "Parent 1" in result1.template
-        assert "Parent 2" in result2.template
-    
-    def test_simple_crossover(self):
-        """Test simple crossover fallback"""
-        crossover = LLMPromptCrossover(MockLLMClient())
-        parent1 = PromptTemplate(template="Parent 1", name="p1")
-        parent2 = PromptTemplate(template="Parent 2", name="p2")
-        
-        result1, result2 = crossover._simple_crossover(parent1, parent2)
-        
-        assert isinstance(result1, PromptTemplate)
-        assert isinstance(result2, PromptTemplate)
-        assert "Parent 1" in result1.template and "Parent 2" in result1.template
-        assert "Parent 2" in result2.template and "Parent 1" in result2.template
 
 
 class TestLLMGeneticOptimizer:

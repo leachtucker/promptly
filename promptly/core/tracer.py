@@ -132,6 +132,7 @@ class Tracer:
         prompt_name: Optional[str] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        optimizer_only: bool = False,
     ) -> List[TraceRecord]:
         """Query trace records"""
         query = "SELECT * FROM traces WHERE 1=1"
@@ -152,6 +153,62 @@ class Tracer:
         if end_date:
             query += " AND timestamp <= ?"
             params.append(end_date.isoformat())
+
+        if optimizer_only:
+            query += " AND json_extract(metadata, '$.optimizer_context') IS NOT NULL"
+
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(str(limit))
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(query, params)
+            rows = cursor.fetchall()
+
+        records = []
+        for row in rows:
+            records.append(TraceRecord.from_db_row(row))
+
+        return records
+
+    def list_optimizer_records(
+        self,
+        *,
+        limit: int = 100,
+        model: Optional[str] = None,
+        prompt_name: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        optimization_id: Optional[str] = None,
+        generation: Optional[int] = None,
+    ) -> List[TraceRecord]:
+        """Query optimizer-specific trace records"""
+        query = "SELECT * FROM traces WHERE json_extract(metadata, '$.optimizer_context') IS NOT NULL"
+        params = []
+
+        if model:
+            query += " AND model = ?"
+            params.append(model)
+
+        if prompt_name:
+            query += " AND prompt_name = ?"
+            params.append(prompt_name)
+
+        if start_date:
+            query += " AND timestamp >= ?"
+            params.append(start_date.isoformat())
+
+        if end_date:
+            query += " AND timestamp <= ?"
+            params.append(end_date.isoformat())
+
+        if optimization_id:
+            query += " AND json_extract(metadata, '$.optimizer_context.optimization_id') = ?"
+            params.append(optimization_id)
+
+        if generation is not None:
+            query += " AND json_extract(metadata, '$.optimizer_context.generation') = ?"
+            params.append(str(generation))
 
         query += " ORDER BY timestamp DESC LIMIT ?"
         params.append(str(limit))

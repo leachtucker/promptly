@@ -12,7 +12,7 @@ from rich import box
 import click
 import asyncio
 import json
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from ..core.runner import PromptRunner
 from ..core.tracer import Tracer
 from ..core.clients import OpenAIClient, AnthropicClient
@@ -34,35 +34,90 @@ class RichProgressCallback(ProgressCallback):
         self.console = console
         self.progress = progress
         self.task_id = task_id
+        self.generation_count = 0
+        self.best_candidates: List[Dict[str, Any]] = []
     
     async def on_population_initialized(self, population_size: int) -> None:
         """Called when initial population is created"""
-        self.console.print(f"[bold green]✅ Generated {population_size} initial variations[/bold green]")
+        self.console.print()
+        self.console.print(Panel(
+            f"[bold blue]🧬 Population Ready![/bold blue]\n\n"
+            f"[green]✨ Generated {population_size} diverse prompt variations[/green]\n"
+            f"[dim]Each variation explores different approaches to your prompt[/dim]",
+            border_style="blue",
+            expand=False
+        ))
         self.console.print()
     
     async def on_generation_start(self, generation: int, total_generations: int) -> None:
         """Called at the start of each generation"""
+        self.generation_count = generation + 1
+        
         # Update progress description
         self.progress.update(
             self.task_id, 
-            description=f"Generation {generation + 1}/{total_generations} - Evaluating population..."
+            description=f"🧬 Generation {self.generation_count}/{total_generations} - Evolving prompts..."
         )
+        
+        # Show generation start with excitement
+        if self.generation_count == 1:
+            self.console.print("[bold cyan]🚀 Starting evolution process...[/bold cyan]")
+        else:
+            self.console.print(f"[bold cyan]🔄 Generation {self.generation_count} - Let's evolve![/bold cyan]")
     
     async def on_generation_complete(self, stats: dict) -> None:
         """Called when a generation completes with statistics"""
         generation = stats['generation']
         best_fitness = stats['best_fitness']
-        avg_fitness = stats['avg_fitness']
+        best_prompt = stats['best_prompt']
+        reasoning = stats['reasoning']
+        
+        # Store best candidate for later display
+        self.best_candidates.append({
+            'generation': generation,
+            'fitness': best_fitness,
+            'prompt': best_prompt,
+            'reasoning': reasoning
+        })
         
         # Update progress bar
+        fitness_color = "green" if best_fitness >= 0.8 else "yellow" if best_fitness >= 0.6 else "red"
         self.progress.update(
             self.task_id,
-            description=f"Generation {generation} - Best: {best_fitness:.3f}, Avg: {avg_fitness:.3f}"
+            description=f"✨ Gen {generation} complete - Best: [{fitness_color}]{best_fitness:.3f}[/{fitness_color}]"
         )
         
-        # Show generation stats in a compact format
-        fitness_color = "green" if best_fitness >= 0.8 else "yellow" if best_fitness >= 0.6 else "red"
-        self.console.print(f"[dim]Gen {generation}: Best=[{fitness_color}]{best_fitness:.3f}[/{fitness_color}], Avg={avg_fitness:.3f}[/dim]")
+        # Show exciting generation results
+        self.console.print()
+        
+        # Generation champion display
+        champion_emoji = "🏆" if best_fitness >= 0.8 else "🥇" if best_fitness >= 0.6 else "🔥"
+        self.console.print(f"{champion_emoji} [bold green]Generation {generation} Champion![/bold green] [bold {fitness_color}]{best_fitness:.3f}[/bold {fitness_color}]")
+        
+        # Show best prompt preview (truncated for readability)
+        prompt_preview = best_prompt
+        if len(prompt_preview) > 80:
+            prompt_preview = prompt_preview[:80] + "..."
+        
+        self.console.print(f"[dim]💡 Best prompt: [blue]{prompt_preview}[/blue][/dim]")
+        
+        # Show improvement over previous generation
+        if len(self.best_candidates) > 1:
+            prev_fitness = self.best_candidates[-2]['fitness']
+            improvement = best_fitness - prev_fitness
+            if improvement > 0:
+                self.console.print(f"[bold green]📈 Improved by {improvement:.3f}![/bold green]")
+            elif improvement < 0:
+                self.console.print(f"[yellow]📉 Slight dip of {abs(improvement):.3f}[/yellow]")
+            else:
+                self.console.print("[dim]➡️ Maintaining performance[/dim]")
+        
+        # Show LLM reasoning (if available and not too long)
+        if reasoning and len(reasoning) > 0:
+            reasoning_preview = reasoning[:100] + "..." if len(reasoning) > 100 else reasoning
+            self.console.print(f"[dim]🤖 LLM insight: {reasoning_preview}[/dim]")
+        
+        self.console.print()
     
     async def on_optimization_complete(self, result: OptimizationResult) -> None:
         """Called when optimization completes"""
@@ -70,8 +125,35 @@ class RichProgressCallback(ProgressCallback):
         self.progress.update(
             self.task_id,
             completed=100,
-            description="Optimization complete!"
+            description="🎉 Evolution complete!"
         )
+        
+        self.console.print()
+        
+        # Show evolution summary
+        if len(self.best_candidates) > 1:
+            self.console.print(Panel(
+                "[bold green]🎉 Evolution Complete![/bold green]\n\n"
+                "[blue]📊 Evolution Summary:[/blue]\n"
+                f"• Started with fitness: [yellow]{self.best_candidates[0]['fitness']:.3f}[/yellow]\n"
+                f"• Evolved to fitness: [green]{result.fitness_score:.3f}[/green]\n"
+                f"• Total improvement: [bold green]{result.fitness_score - self.best_candidates[0]['fitness']:.3f}[/bold green]\n"
+                f"• Generations evolved: [cyan]{result.generation + 1}[/cyan]",
+                border_style="green",
+                expand=False
+            ))
+            self.console.print()
+        
+        # Show the final champion with celebration
+        if result.fitness_score >= 0.8:
+            celebration = "🌟 EXCELLENT! 🌟"
+        elif result.fitness_score >= 0.6:
+            celebration = "🎯 Good! 🎯"
+        else:
+            celebration = "🤏 Decent! 🤏"
+        
+        self.console.print(f"[bold green]{celebration}[/bold green]")
+        self.console.print(f"[bold]Final Champion Fitness: [green]{result.fitness_score:.3f}[/green][/bold]")
 
 
 @click.group()
@@ -153,41 +235,66 @@ async def _run_simple_prompt(
 
 @main.command()
 @click.option("--trace-id", help="Trace ID to view")
-def trace(trace_id: Optional[str]) -> None:
+@click.option("--optimizer-only", is_flag=True, help="Show only optimizer traces")
+@click.option("--optimization-id", help="Filter by specific optimization ID")
+@click.option("--generation", type=int, help="Filter by generation number")
+def trace(trace_id: Optional[str], optimizer_only: bool, optimization_id: Optional[str], generation: Optional[int]) -> None:
     """View trace information"""
 
     def _list_traces_table(tracer: Tracer) -> None:
-            trace_records = tracer.list_records(limit=20)
+        if optimizer_only or optimization_id is not None or generation is not None:
+            trace_records = tracer.list_optimizer_records(
+                limit=20,
+                optimization_id=optimization_id,
+                generation=generation
+            )
+        else:
+            trace_records = tracer.list_records(limit=20, optimizer_only=optimizer_only)
             
-            if not trace_records:
-                click.echo("No trace records found")
-                return
+        if not trace_records:
+            click.echo("No trace records found")
+            return
             
-            console = Console()
-            table = Table(title="Trace Records", row_styles=["", "dim"])
+        console = Console()
+        table = Table(title="Trace Records", row_styles=["", "dim"])
+        
+        table.add_column("ID", style="cyan")
+        table.add_column("Prompt Name", style="green")
+        table.add_column("Prompt Template", style="purple")
+        table.add_column("Response", style="blue", max_width=200)
+        table.add_column("Model", style="yellow")
+        table.add_column("Duration (ms)", justify="right")
+        table.add_column("Error", style="red")
+        table.add_column("Created At", style="purple")
+        
+        # Add optimizer-specific columns if showing optimizer traces
+        if optimizer_only or optimization_id is not None or generation is not None:
+            table.add_column("Optimization ID", style="red")
+            table.add_column("Generation", style="red")
+        
+        for record in trace_records:
+            row_data = [
+                str(record.id or "N/A"),
+                record.prompt_name,
+                record.prompt_template[:400] + "..." if len(record.prompt_template) > 400 else record.prompt_template,
+                record.response[:400] + "..." if len(record.response) > 400 else record.response,
+                record.model,
+                f"{record.duration_ms:.2f}",
+                str(record.error)[:30] if record.error else "",
+                record.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            ]
             
-            table.add_column("ID", style="cyan")
-            table.add_column("Prompt Name", style="green")
-            table.add_column("Prompt Template", style="purple")
-            table.add_column("Response", style="blue", max_width=200)
-            table.add_column("Model", style="yellow")
-            table.add_column("Duration (ms)", justify="right")
-            table.add_column("Error", style="red")
-            table.add_column("Created At", style="purple")
+            # Add optimizer context if available
+            if optimizer_only or optimization_id is not None or generation is not None:
+                optimizer_context = record.metadata.get('optimizer_context', {})
+                row_data.extend([
+                    optimizer_context.get('optimization_id', 'N/A'),
+                    str(optimizer_context.get('generation', 'N/A'))
+                ])
             
-            for record in trace_records:
-                table.add_row(
-                    str(record.id or "N/A"),
-                    record.prompt_name,
-                    record.prompt_template[:400] + "..." if len(record.prompt_template) > 400 else record.prompt_template,
-                    record.response[:400] + "..." if len(record.response) > 400 else record.response,
-                    record.model,
-                    f"{record.duration_ms:.2f}",
-                    str(record.error)[:30] if record.error else "",
-                    record.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                )
-            
-            console.print(table)
+            table.add_row(*row_data)
+        
+        console.print(table)
         
     def _view_trace(tracer: Tracer, trace_id: str) -> None:
         """View a trace record"""
@@ -210,6 +317,18 @@ def trace(trace_id: Optional[str]) -> None:
         table.add_row("Prompt Tokens", str(trace_record.usage.prompt_tokens))
         table.add_row("Completion Tokens", str(trace_record.usage.completion_tokens))
         table.add_row("Error", str(trace_record.error) if trace_record.error else "None")
+        
+        # Show optimizer context if available
+        optimizer_context = trace_record.metadata.get('optimizer_context')
+        if optimizer_context:
+            table.add_row("", "")  # Empty row for separation
+            table.add_row("OPTIMIZER CONTEXT", "")
+            table.add_row("Optimization ID", optimizer_context.get('optimization_id', 'N/A'))
+            table.add_row("Generation", str(optimizer_context.get('generation', 'N/A')))
+            table.add_row("Population Size", str(optimizer_context.get('population_size', 'N/A')))
+            table.add_row("Base Prompt Name", optimizer_context.get('base_prompt_name', 'N/A'))
+            table.add_row("Start Time", optimizer_context.get('start_time', 'N/A'))
+        
         table.add_row("Prompt", trace_record.rendered_prompt)
         table.add_row("Response", trace_record.response)
     
@@ -241,6 +360,7 @@ def trace(trace_id: Optional[str]) -> None:
 @click.option("--elite-size", default=2, help="Number of elite individuals to preserve")
 @click.option("--fitness-type", default="accuracy", type=click.Choice(["accuracy", "semantic"]), help="Fitness function type")
 @click.option("--trace", is_flag=True, help="Enable tracing", default=True)
+@click.option("--trace-optimizer", is_flag=True, help="Enable tracing of optimizer prompts with separate context", default=False)
 @click.option("--output", "-o", help="Output file to save the optimized prompt")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt and proceed automatically")
 @click.option("--use-llm-population", is_flag=True, default=True, help="Use LLM to generate initial population variations")
@@ -260,6 +380,7 @@ def optimize(
     elite_size: int,
     fitness_type: str,
     trace: bool,
+    trace_optimizer: bool,
     output: Optional[str],
     yes: bool,
     use_llm_population: bool,
@@ -307,7 +428,7 @@ def optimize(
                 return
             
             # Initialize runner (only needed if test cases are provided)
-            tracer = Tracer() if trace else None
+            tracer = Tracer() if (trace or trace_optimizer) else None
             runner = PromptRunner(main_client, tracer)
             
             # Create base prompt template
@@ -327,6 +448,7 @@ def optimize(
                 population_size=population_size,
                 generations=generations,
                 fitness_function=fitness_function,
+                tracer=tracer,
                 mutation_rate=mutation_rate,
                 crossover_rate=crossover_rate,
                 elite_size=elite_size,
@@ -334,7 +456,6 @@ def optimize(
                 crossover_client=crossover_client,
                 population_generator_client=population_generator_client if use_llm_population else None,
                 eval_client=eval_client,
-                tracer=tracer,
                 use_llm_population_generation=use_llm_population,
                 population_diversity_level=population_diversity
             )
@@ -545,11 +666,13 @@ def _calculate_api_calls(
     # Evaluation calls (one per individual per generation)
     evaluation_calls = total_evaluations
     
-    # Prompt execution calls (only if test cases are provided)
+    # Prompt execution calls 
     if has_test_cases and test_cases_count > 0:
+        # If test cases are provided, run the prompt once for each test case
         execution_calls = total_evaluations * test_cases_count
     else:
-        execution_calls = 0
+        # If no test cases are provided, run the prompt once for quality evaluation on output
+        execution_calls = 1 * total_evaluations
     
     # Mutation calls (based on actual mutation rate)
     mutation_calls = 0

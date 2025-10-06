@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional, List, Tuple
 import random
 import asyncio
 import json
+import sqlite3
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -14,6 +15,7 @@ from .templates import PromptTemplate
 from .clients import BaseLLMClient, OpenAIClient
 from .runner import PromptRunner
 from .tracer import Tracer
+import uuid
 
 
 class ProgressCallback(ABC):
@@ -151,6 +153,22 @@ class LLMAccuracyFitnessFunction(LLMFitnessFunction):
                     "metadata": test_case.metadata
                 })
         
+        # If no test cases, run the prompt once for quality evaluation on output
+        if not test_cases:
+            response = await runner.run(
+                model=model,
+                prompt=prompt,
+                variables={},
+                **kwargs
+            )
+            test_results.append({
+                "input": {},
+                "expected": None,
+                "actual": response.content,
+                "metadata": {}
+            })
+
+        
         # Use LLM to evaluate the results
         evaluation_prompt = self._create_evaluation_prompt(prompt, test_results)
         
@@ -181,19 +199,43 @@ class LLMAccuracyFitnessFunction(LLMFitnessFunction):
     def _create_evaluation_prompt(self, prompt: PromptTemplate, test_results: List[Dict[str, Any]]) -> str:
         """Create evaluation prompt for the LLM"""
         return f"""
-You are an expert prompt evaluator. Your task is to evaluate how well a prompt template performs on test cases.
+You are an expert LLM prompt evaluator specializing in systematic prompt assessment.
+Your task is to evaluate the effectiveness of a prompt based on its output.
 
-PROMPT TEMPLATE TO EVALUATE:
-{prompt.template}
+EVALUATION FRAMEWORK:
+1. ACCURACY (Weight: 40%)
+   - With Expected Output: Calculate the percentage of test cases producing the expected output.
+   - Without Expected Output: Assess output quality against the prompt's stated objective
+   - Consider: Correctness, relevance, completeness
 
-TEST RESULTS:
-{json.dumps(test_results, indent=2)}
+2. CONSISTENCY (Weight: 20%)
+   - Evaluate output stability across similar inputs
+   - Assess format adherence across test cases
+   - Check for contradictions or unexpected variations
+   - Ideal score: Outputs follow predictable patterns
 
-EVALUATION CRITERIA:
-1. Accuracy: How often does the prompt produce the expected output?
-2. Consistency: Are the responses consistent in format and quality?
-3. Robustness: How well does it handle edge cases?
-4. Clarity: Are the responses clear and well-structured?
+3. ROBUSTNESS (Weight: 15%)
+   - Performance on edge cases and unusual inputs
+   - Graceful handling of ambiguous or incomplete inputs
+   - Resistance to prompt injection or adversarial inputs
+   - Error handling quality
+
+4. CLARITY (Weight: 25%)
+   - Prompt structure and organization
+   - Instruction specificity and lack of ambiguity
+   - Ease of understanding for the target model
+   - Appropriate level of detail
+
+SCORING METHODOLOGY:
+- Calculate individual scores for each criterion (0.0 to 1.0)
+- Apply weights to compute final score
+- Use this scale:
+  * 0.9-1.0: Excellent - Production ready
+  * 0.7-0.89: Good - Minor improvements needed
+  * 0.5-0.69: Adequate - Notable issues to address
+  * 0.3-0.49: Poor - Significant revision required
+  * 0.0-0.29: Critical - Complete redesign needed
+
 
 Please provide:
 1. A score from 0.0 to 1.0 (where 1.0 is perfect)
@@ -202,6 +244,16 @@ Please provide:
 Format your response as:
 SCORE: [number between 0.0 and 1.0]
 REASONING: [detailed explanation of your evaluation]
+
+==========
+PROMPT TEMPLATE TO EVALUATE:
+{prompt.template}
+==========
+
+==========
+TEST RESULTS:
+{json.dumps(test_results, indent=2)}
+==========
 """
     
     def _parse_evaluation_response(self, response: str) -> Tuple[float, str]:
@@ -773,32 +825,28 @@ class LLMPromptCrossover:
         
         crossover_prompt = self._create_crossover_prompt(parent1, parent2)
         
-        try:
-            crossover_response = await self.crossover_client.generate(
-                prompt=crossover_prompt,
-                model=self.crossover_model,
-                temperature=0.6,
-                max_tokens=1500
+        crossover_response = await self.crossover_client.generate(
+            prompt=crossover_prompt,
+            model=self.crossover_model,
+            temperature=0.6,
+            max_tokens=1500
+        )
+        
+        offspring1, offspring2 = self._extract_offspring(crossover_response.content)
+        
+        return (
+            PromptTemplate(
+                template=offspring1,
+                name=f"{parent1.name}_offspring1",
+                metadata=parent1.metadata
+            ),
+            PromptTemplate(
+                template=offspring2,
+                name=f"{parent2.name}_offspring2",
+                metadata=parent2.metadata
             )
+        )
             
-            offspring1, offspring2 = self._extract_offspring(crossover_response.content)
-            
-            return (
-                PromptTemplate(
-                    template=offspring1,
-                    name=f"{parent1.name}_offspring1",
-                    metadata=parent1.metadata
-                ),
-                PromptTemplate(
-                    template=offspring2,
-                    name=f"{parent2.name}_offspring2",
-                    metadata=parent2.metadata
-                )
-            )
-            
-        except Exception:
-            # Fallback to simple crossover
-            return self._simple_crossover(parent1, parent2)
     
     def _create_crossover_prompt(self, parent1: PromptTemplate, parent2: PromptTemplate) -> str:
         """Create crossover instruction prompt"""
@@ -851,17 +899,51 @@ OFFSPRING 2:
             offspring1 = '\n'.join(lines[:mid_point])
             offspring2 = '\n'.join(lines[mid_point:])
             return offspring1, offspring2
+
+
+
+class OptimizerPromptRunner(PromptRunner):
+    """PromptRunner with optimizer context tracking"""
     
-    def _simple_crossover(self, parent1: PromptTemplate, parent2: PromptTemplate) -> Tuple[PromptTemplate, PromptTemplate]:
-        """Fallback simple crossover"""
-        # Simple concatenation-based crossover
-        offspring1_template = f"{parent1.template}\n\n{parent2.template}"
-        offspring2_template = f"{parent2.template}\n\n{parent1.template}"
+    def __init__(
+        self, 
+        client: BaseLLMClient, 
+        tracer: Optional[Tracer] = None, 
+        backup_client: Optional[BaseLLMClient] = None,
+        optimizer_context: Optional[Dict[str, Any]] = None
+    ):
+        super().__init__(client, tracer, backup_client)
+        self.optimizer_context = optimizer_context or {}
+    
+    async def _run_with_client(
+        self,
+        client: BaseLLMClient,
+        model: str,
+        prompt: PromptTemplate,
+        variables: Optional[Dict[str, Any]] = {},
+        **llm_kwargs: Any,
+    ):
+        """Override to add optimizer context to traces"""
+        response = await super()._run_with_client(client, model, prompt, variables, **llm_kwargs)
         
-        return (
-            PromptTemplate(template=offspring1_template, name=f"{parent1.name}_simple_offspring1", metadata=parent1.metadata),
-            PromptTemplate(template=offspring2_template, name=f"{parent2.name}_simple_offspring2", metadata=parent2.metadata)
-        )
+        # Add optimizer context to the response metadata if we have a tracer and context
+        if self.tracer and self.optimizer_context and response.metadata.get('trace_id'):
+            # Update the trace record with optimizer context
+            trace_record = self.tracer.get_record(str(response.metadata['trace_id']))
+            if trace_record:
+                # Merge optimizer context into metadata
+                updated_metadata = trace_record.metadata.copy()
+                updated_metadata['optimizer_context'] = self.optimizer_context
+                
+                # Update the trace record in the database
+                with sqlite3.connect(self.tracer.db_path) as conn:
+                    conn.execute(
+                        "UPDATE traces SET metadata = ? WHERE id = ?",
+                        (json.dumps(updated_metadata, default=str), trace_record.id)
+                    )
+                    conn.commit()
+        
+        return response
 
 
 class LLMGeneticOptimizer:
@@ -926,6 +1008,7 @@ class LLMGeneticOptimizer:
         self.population: List[PromptTemplate] = []
         self.fitness_scores: List[float] = []
         self._current_generation_stats: Optional[Dict[str, Any]] = None
+        self.optimization_id: str = str(uuid.uuid4())
         
     async def optimize(
         self,
@@ -939,6 +1022,25 @@ class LLMGeneticOptimizer:
         start_time = datetime.now()
         total_evaluations = 0
         
+        # Create optimizer-aware runner if tracing is enabled
+        if self.tracer and self.tracer.is_tracing_enabled and runner is not None:
+            # Create context for this optimization run
+            optimizer_context = {
+                "optimization_id": self.optimization_id,
+                "population_size": self.population_size,
+                "generations": self.generations,
+                "base_prompt_name": base_prompt.name,
+                "start_time": start_time.isoformat(),
+            }
+            
+            # Wrap the runner with optimizer context
+            runner = OptimizerPromptRunner(
+                client=runner.client,
+                tracer=runner.tracer,
+                backup_client=runner.backup_client,
+                optimizer_context=optimizer_context
+            )
+        
         # Initialize population
         await self._initialize_population(base_prompt)
         await self.progress_callback.on_population_initialized(len(self.population))
@@ -947,6 +1049,10 @@ class LLMGeneticOptimizer:
         for generation in range(self.generations):
             self.current_generation = generation
             await self.progress_callback.on_generation_start(generation, self.generations)
+            
+            # Update optimizer context with current generation if we have an optimizer runner
+            if isinstance(runner, OptimizerPromptRunner):
+                runner.optimizer_context["generation"] = generation
             
             # Evaluate fitness for all individuals using LLM
             evaluations = await self._evaluate_population(
@@ -1098,10 +1204,8 @@ class LLMGeneticOptimizer:
                 try:
                     offspring1, offspring2 = await self.crossover.crossover(parent1, parent2)
                     new_population.extend([offspring1, offspring2])
-                except Exception:
-                    # Fallback to simple crossover
-                    offspring1, offspring2 = self._simple_crossover(parent1, parent2)
-                    new_population.extend([offspring1, offspring2])
+                except Exception as e:
+                    raise Exception("Error during crossover") from e
             else:
                 # Just copy parents
                 new_population.extend([parent1, parent2])
@@ -1126,19 +1230,8 @@ class LLMGeneticOptimizer:
         # Trim to exact population size
         self.population = new_population[:self.population_size]
     
-    def _simple_crossover(self, parent1: PromptTemplate, parent2: PromptTemplate) -> Tuple[PromptTemplate, PromptTemplate]:
-        """Simple crossover fallback"""
-        # Simple concatenation-based crossover
-        offspring1_template = f"{parent1.template}\n\n{parent2.template}"
-        offspring2_template = f"{parent2.template}\n\n{parent1.template}"
-        
-        return (
-            PromptTemplate(template=offspring1_template, name=f"{parent1.name}_simple_offspring1", metadata=parent1.metadata),
-            PromptTemplate(template=offspring2_template, name=f"{parent2.name}_simple_offspring2", metadata=parent2.metadata)
-        )
-    
     async def _log_generation_progress(self, generation: int, best_evaluation: FitnessEvaluation) -> None:
-        """Log progress of optimization - console output removed, functionality preserved"""
+        """Log progress of optimization"""
         # Calculate metrics for internal tracking (no console output)
         avg_fitness = sum(self.fitness_scores) / len(self.fitness_scores) if self.fitness_scores else 0
         max_fitness = max(self.fitness_scores) if self.fitness_scores else 0
