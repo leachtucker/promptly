@@ -504,26 +504,6 @@ Please provide a detailed response.
         assert population[2].name.startswith("test_prompt_llm_var_")
         assert population[3].name.startswith("test_prompt_llm_var_")
     
-    @pytest.mark.asyncio
-    async def test_generate_initial_population_fallback(self):
-        """Test fallback to simple variations when LLM fails"""
-        # Mock client that raises an exception
-        mock_client = MockLLMClient()
-        mock_client.generate = AsyncMock(side_effect=Exception("API Error"))
-        
-        generator = LLMPopulationGenerator(mock_client)
-        
-        base_prompt = PromptTemplate(
-            template="Answer this: {{question}}",
-            name="test_prompt"
-        )
-        
-        population = await generator.generate_initial_population(base_prompt, 3, 0.7)
-        
-        assert len(population) == 3
-        assert population[0].template == "Answer this: {{question}}"  # Original prompt
-        assert population[1].name.startswith("test_prompt_fallback_var_")
-        assert population[2].name.startswith("test_prompt_fallback_var_")
     
     @pytest.mark.asyncio
     async def test_generate_initial_population_parsing_fallback(self):
@@ -623,27 +603,6 @@ Consider this question: {{question}}
             assert "{{question}}" in variation.template
             assert variation.name.startswith("test_prompt_alt_var_")
     
-    def test_fallback_simple_variations(self):
-        """Test fallback simple variations"""
-        mock_client = MockLLMClient()
-        generator = LLMPopulationGenerator(mock_client)
-        
-        base_prompt = PromptTemplate(
-            template="Answer this: {{question}}",
-            name="test_prompt"
-        )
-        
-        variations = generator._fallback_simple_variations(base_prompt, 4)
-        
-        assert len(variations) == 4
-        assert variations[0].template == "Answer this: {{question}}"  # Original
-        assert variations[1].name.startswith("test_prompt_fallback_var_")
-        assert variations[2].name.startswith("test_prompt_fallback_var_")
-        assert variations[3].name.startswith("test_prompt_fallback_var_")
-        
-        # Check that all variations contain the original template
-        for variation in variations:
-            assert "{{question}}" in variation.template or "answer this" in variation.template.lower()
 
 
 class TestLLMGeneticOptimizerWithPopulationGeneration:
@@ -726,33 +685,6 @@ Be specific and clear.
         assert len(optimizer.population) == 4
         assert optimizer.population[0].template == "Answer this: {{question}}"
         assert optimizer.population[1].name.startswith("test_prompt_llm_var_")
-    
-    @pytest.mark.asyncio
-    async def test_initialize_population_fallback_to_simple(self):
-        """Test fallback to simple variations when LLM fails"""
-        mock_client = MockLLMClient()
-        mock_client.generate = AsyncMock(side_effect=Exception("API Error"))
-        
-        fitness_function = LLMAccuracyFitnessFunction(mock_client)
-        
-        optimizer = LLMGeneticOptimizer(
-            population_size=4,
-            generations=2,
-            fitness_function=fitness_function,
-            population_generator_client=mock_client,
-            use_llm_population_generation=True
-        )
-        
-        base_prompt = PromptTemplate(
-            template="Answer this: {{question}}",
-            name="test_prompt"
-        )
-        
-        await optimizer._initialize_population(base_prompt)
-        
-        assert len(optimizer.population) == 4
-        assert optimizer.population[0].template == "Answer this: {{question}}"
-        assert optimizer.population[1].name.startswith("test_prompt_fallback_var_")
     
     @pytest.mark.asyncio
     async def test_initialize_population_simple_when_disabled(self):

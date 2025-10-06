@@ -650,9 +650,8 @@ class LLMPopulationGenerator:
             
             return population[:population_size]
             
-        except Exception:
-            # Fallback to simple variations
-            return self._fallback_simple_variations(base_prompt, population_size)
+        except Exception as e:
+            raise Exception("Error during population generation") from e
     
     def _create_generation_prompt(self, base_prompt: PromptTemplate, num_variations: int, diversity_level: float) -> str:
         """Create prompt for LLM population generation"""
@@ -769,44 +768,6 @@ VARIATION {num_variations}:
                 ))
         
         return variations
-    
-    def _fallback_simple_variations(self, base_prompt: PromptTemplate, population_size: int) -> List[PromptTemplate]:
-        """Fallback to simple variations if LLM generation fails"""
-        variations = []
-        template = base_prompt.template
-        
-        # Create simple variations similar to the original method
-        simple_variations = [
-            f"Please {template.lower()}",
-            f"Task: {template}",
-            f"{template}\n\nBe precise and clear.",
-            f"{template}\n\nProvide specific details.",
-            f"{template}\n\nThink step by step.",
-            f"Answer the following: {template}",
-            f"{template}\n\nUse examples when helpful.",
-            f"Consider this carefully: {template}",
-            f"{template}\n\nBe thorough in your response.",
-            f"Please provide a detailed response to: {template}",
-        ]
-        
-        # Add original prompt first
-        variations.append(base_prompt)
-        
-        # Add variations up to population size
-        for i in range(1, population_size):
-            if i <= len(simple_variations):
-                variation_template = simple_variations[i - 1]
-            else:
-                # Cycle through variations if we need more
-                variation_template = simple_variations[(i - 1) % len(simple_variations)]
-            
-            variations.append(PromptTemplate(
-                template=variation_template,
-                name=f"{base_prompt.name}_fallback_var_{i}",
-                metadata=base_prompt.metadata
-            ))
-        
-        return variations[:population_size]
 
 
 class LLMPromptCrossover:
