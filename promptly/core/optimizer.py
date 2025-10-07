@@ -9,7 +9,7 @@ import asyncio
 import json
 import sqlite3
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from .templates import PromptTemplate
 from .clients import BaseLLMClient, OpenAIClient
@@ -89,6 +89,41 @@ class FitnessEvaluation(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+# Structured output models for LLM responses
+class EvaluationResponse(BaseModel):
+    """Structured response for prompt evaluation"""
+    score: float = Field(description="Score from 0.0 to 1.0 where 1.0 is perfect")
+    reasoning: str = Field(description="Detailed explanation of the evaluation")
+
+
+class QualityEvaluationResponse(BaseModel):
+    """Structured response for prompt quality evaluation"""
+    score: float = Field(description="Score from 0.0 to 1.0 where 1.0 is excellent")
+    reasoning: str = Field(description="Detailed explanation of the quality evaluation")
+
+
+class SimilarityEvaluationResponse(BaseModel):
+    """Structured response for semantic similarity evaluation"""
+    score: float = Field(description="Similarity score from 0.0 to 1.0")
+    reasoning: str = Field(description="Detailed explanation of the similarity evaluation")
+
+
+class MutationResponse(BaseModel):
+    """Structured response for prompt mutation"""
+    mutated_prompt: str = Field(description="The improved prompt template")
+
+
+class PopulationGenerationResponse(BaseModel):
+    """Structured response for population generation"""
+    variations: List[str] = Field(description="List of prompt template variations")
+
+
+class CrossoverResponse(BaseModel):
+    """Structured response for prompt crossover"""
+    offspring1: str = Field(description="First offspring prompt template")
+    offspring2: str = Field(description="Second offspring prompt template")
+
+
 class LLMFitnessFunction(ABC):
     """Abstract base class for LLM-powered fitness functions"""
     
@@ -99,34 +134,43 @@ class LLMFitnessFunction(ABC):
     @abstractmethod
     async def evaluate(
         self, 
+        runner: PromptRunner,
         prompt: PromptTemplate, 
         test_cases: Optional[List[PromptTestCase]] = None,
-        runner: Optional[PromptRunner] = None,
         **kwargs: Any
     ) -> FitnessEvaluation:
         """Evaluate fitness of a prompt using LLM"""
         pass
 
 
-class LLMAccuracyFitnessFunction(LLMFitnessFunction):
-    """LLM-powered fitness function for accuracy evaluation"""
+class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
+    """Comprehensive LLM-powered fitness function combining accuracy and semantic evaluation"""
+    
+    def __init__(self, evaluation_client: BaseLLMClient, evaluation_model: str = "gpt-4"):
+        super().__init__(evaluation_client, evaluation_model)
+        self.accuracy_weight = 0.6  # Weight for accuracy evaluation
+        self.semantic_weight = 0.4  # Weight for semantic evaluation
     
     async def evaluate(
         self,
+        runner: PromptRunner,
         prompt: PromptTemplate,
         test_cases: Optional[List[PromptTestCase]] = None,
-        runner: Optional[PromptRunner] = None,
         model: str = "gpt-3.5-turbo",
         **kwargs: Any
     ) -> FitnessEvaluation:
-        """Evaluate prompt accuracy using LLM reasoning"""
-        
-        if test_cases is None or len(test_cases) == 0:
-            # Evaluate prompt quality without test cases
-            return await self._evaluate_prompt_quality(prompt)
-        
-        if runner is None:
-            raise ValueError("Runner is required when test cases are provided")
+        """Evaluate prompt using comprehensive accuracy and semantic analysis"""
+
+        if not test_cases:
+            output = await runner.run(
+                model=model,
+                prompt=prompt,
+                variables={},
+                **kwargs
+            )
+            output = output.content
+            
+            return await self._evaluate_prompt_quality(prompt, output)
         
         # First, run the prompt on all test cases
         test_results = []
@@ -153,97 +197,88 @@ class LLMAccuracyFitnessFunction(LLMFitnessFunction):
                     "metadata": test_case.metadata
                 })
         
-        # If no test cases, run the prompt once for quality evaluation on output
-        if not test_cases:
-            response = await runner.run(
-                model=model,
-                prompt=prompt,
-                variables={},
-                **kwargs
-            )
-            test_results.append({
-                "input": {},
-                "expected": None,
-                "actual": response.content,
-                "metadata": {}
-            })
-
-        
-        # Use LLM to evaluate the results
-        evaluation_prompt = self._create_evaluation_prompt(prompt, test_results)
+        # Run comprehensive evaluation with both accuracy and semantic analysis
+        evaluation_prompt = self._create_comprehensive_evaluation_prompt(prompt, test_results)
         
         try:
-            evaluation_response = await self.evaluation_client.generate(
+            response = await self.evaluation_client.generate(
                 prompt=evaluation_prompt,
                 model=self.evaluation_model,
                 temperature=0.3,  # Low temperature for consistent evaluation
-                max_tokens=500
+                max_tokens=800
             )
+
+            evaluation_response = EvaluationResponse.model_validate_json(response.content)
             
-            # Parse LLM response for score and reasoning
-            score, reasoning = self._parse_evaluation_response(evaluation_response.content)
+            # Extract score and reasoning from structured response
+            score = evaluation_response.score
+            reasoning = evaluation_response.reasoning
             
-        except Exception as e:
-            # Fallback to simple accuracy if LLM evaluation fails
-            score = self._calculate_simple_accuracy(test_results)
-            reasoning = f"LLM evaluation failed: {str(e)}. Using simple accuracy."
+        except (ValidationError, json.JSONDecodeError) as e:
+            raise ValueError("Failed to parse evaluation response") from e
         
         return FitnessEvaluation(
             prompt=prompt,
             score=score,
             test_results=test_results,
             evaluation_reasoning=reasoning,
-            metadata={"evaluation_method": "llm_powered"}
+            metadata={"evaluation_method": "comprehensive_llm_powered"}
         )
     
-    def _create_evaluation_prompt(self, prompt: PromptTemplate, test_results: List[Dict[str, Any]]) -> str:
-        """Create evaluation prompt for the LLM"""
+    
+    def _create_comprehensive_evaluation_prompt(self, prompt: PromptTemplate, test_results: List[Dict[str, Any]]) -> str:
+        """Create comprehensive evaluation prompt combining accuracy and semantic analysis"""
         return f"""
-You are an expert LLM prompt evaluator specializing in systematic prompt assessment.
-Your task is to evaluate the effectiveness of a prompt based on its output.
+You are an expert LLM prompt evaluator specializing in comprehensive prompt assessment.
+Your task is to evaluate the effectiveness of a prompt using both accuracy and semantic analysis.
 
-EVALUATION FRAMEWORK:
-1. ACCURACY (Weight: 40%)
-   - With Expected Output: Calculate the percentage of test cases producing the expected output.
-   - Without Expected Output: Assess output quality against the prompt's stated objective
-   - Consider: Correctness, relevance, completeness
+COMPREHENSIVE EVALUATION FRAMEWORK:
 
-2. CONSISTENCY (Weight: 20%)
-   - Evaluate output stability across similar inputs
-   - Assess format adherence across test cases
-   - Check for contradictions or unexpected variations
-   - Ideal score: Outputs follow predictable patterns
+1. ACCURACY ANALYSIS (Weight: 40%)
+   - Exact Match: Calculate percentage of test cases with exact expected output matches
+   - Functional Correctness: Assess if outputs achieve the intended purpose
+   - Completeness: Evaluate if all required information is provided
+   - Precision: Check for unnecessary or irrelevant information
 
-3. ROBUSTNESS (Weight: 15%)
-   - Performance on edge cases and unusual inputs
-   - Graceful handling of ambiguous or incomplete inputs
-   - Resistance to prompt injection or adversarial inputs
-   - Error handling quality
+2. SEMANTIC SIMILARITY (Weight: 30%)
+   - Meaning Preservation: Do actual outputs convey the same meaning as expected?
+   - Key Concept Retention: Are important concepts and information preserved?
+   - Intent Alignment: Does the output serve the same purpose as expected?
+   - Contextual Appropriateness: Is the response appropriate for the given context?
 
-4. CLARITY (Weight: 25%)
-   - Prompt structure and organization
-   - Instruction specificity and lack of ambiguity
-   - Ease of understanding for the target model
-   - Appropriate level of detail
+3. CONSISTENCY & ROBUSTNESS (Weight: 20%)
+   - Output Stability: Evaluate consistency across similar inputs
+   - Format Adherence: Check for consistent formatting and structure
+   - Error Handling: Assess graceful handling of edge cases and errors
+   - Predictability: Do outputs follow predictable patterns?
+
+4. PROMPT QUALITY (Weight: 10%)
+   - Clarity: Is the prompt clear and unambiguous?
+   - Completeness: Does it provide sufficient context and instructions?
+   - Structure: Is it well-organized and easy to follow?
+   - Effectiveness: Would this prompt likely produce high-quality responses?
 
 SCORING METHODOLOGY:
 - Calculate individual scores for each criterion (0.0 to 1.0)
-- Apply weights to compute final score
+- Apply weights to compute final comprehensive score
+- Consider both exact matches and semantic equivalence
 - Use this scale:
-  * 0.9-1.0: Excellent - Production ready
-  * 0.7-0.89: Good - Minor improvements needed
-  * 0.5-0.69: Adequate - Notable issues to address
-  * 0.3-0.49: Poor - Significant revision required
-  * 0.0-0.29: Critical - Complete redesign needed
+  * 0.9-1.0: Excellent - Production ready with high accuracy and semantic fidelity
+  * 0.7-0.89: Good - Minor improvements needed, mostly accurate and semantically correct
+  * 0.5-0.69: Adequate - Notable issues with accuracy or semantic alignment
+  * 0.3-0.49: Poor - Significant accuracy or semantic problems
+  * 0.0-0.29: Critical - Major accuracy and semantic failures
 
+EVALUATION INSTRUCTIONS:
+- For each test case, assess both exact accuracy and semantic similarity
+- Consider that semantically equivalent responses should score highly even if not exact matches
+- Weight exact matches more heavily when precision is critical
+- Weight semantic similarity more heavily when meaning preservation is key
+- Provide detailed reasoning covering both accuracy and semantic aspects
 
 Please provide:
-1. A score from 0.0 to 1.0 (where 1.0 is perfect)
-2. Detailed reasoning for your score
-
-Format your response as:
-SCORE: [number between 0.0 and 1.0]
-REASONING: [detailed explanation of your evaluation]
+1. A comprehensive score from 0.0 to 1.0 (where 1.0 is perfect)
+2. Detailed reasoning covering accuracy, semantic similarity, and overall assessment
 
 ==========
 PROMPT TEMPLATE TO EVALUATE:
@@ -254,261 +289,93 @@ PROMPT TEMPLATE TO EVALUATE:
 TEST RESULTS:
 {json.dumps(test_results, indent=2)}
 ==========
+
+Please respond with valid JSON matching this schema:
+{EvaluationResponse.model_json_schema()}
 """
     
-    def _parse_evaluation_response(self, response: str) -> Tuple[float, str]:
-        """Parse LLM evaluation response"""
-        try:
-            lines = response.strip().split('\n')
-            score_line = None
-            reasoning_lines = []
-            
-            for i, line in enumerate(lines):
-                if line.startswith('SCORE:'):
-                    score_line = line
-                    reasoning_lines = lines[i+1:]
-                    break
-            
-            if score_line:
-                score_str = score_line.split('SCORE:')[1].strip()
-                score = float(score_str)
-                reasoning = '\n'.join(reasoning_lines).replace('REASONING:', '').strip()
-                return score, reasoning
-            else:
-                # Fallback parsing
-                return 0.5, "Could not parse LLM evaluation response"
-                
-        except Exception:
-            return 0.5, "Error parsing evaluation response"
-    
-    def _calculate_simple_accuracy(self, test_results: List[Dict[str, Any]]) -> float:
-        """Fallback simple accuracy calculation"""
-        if not test_results:
-            return 0.0
-        
-        correct = sum(1 for result in test_results 
-                     if result.get('actual', '').strip().lower() == 
-                        result.get('expected', '').strip().lower())
-        return correct / len(test_results)
-    
-    async def _evaluate_prompt_quality(self, prompt: PromptTemplate) -> FitnessEvaluation:
+    async def _evaluate_prompt_quality(self, prompt: PromptTemplate, output: str) -> FitnessEvaluation:
         """Evaluate prompt quality without test cases"""
         
-        quality_prompt = self._create_quality_evaluation_prompt(prompt)
+        quality_prompt = self._create_quality_evaluation_prompt(prompt, output)
         
         try:
-            evaluation_response = await self.evaluation_client.generate(
+            response = await self.evaluation_client.generate(
                 prompt=quality_prompt,
                 model=self.evaluation_model,
                 temperature=0.3,
                 max_tokens=500
             )
             
-            score, reasoning = self._parse_evaluation_response(evaluation_response.content)
+            evaluation_response = QualityEvaluationResponse.model_validate_json(response.content)
             
-        except Exception as e:
-            score = 0.5
-            reasoning = f"Quality evaluation failed: {str(e)}"
+            score = evaluation_response.score
+            reasoning = evaluation_response.reasoning
+            
+        except (ValidationError, json.JSONDecodeError) as e:
+            raise ValueError("Failed to parse quality evaluation response") from e
         
         return FitnessEvaluation(
             prompt=prompt,
             score=score,
             test_results=[],  # No test results for quality evaluation
             evaluation_reasoning=reasoning,
-            metadata={"evaluation_method": "prompt_quality"}
+            metadata={"evaluation_method": "comprehensive_prompt_quality"}
         )
     
-    def _create_quality_evaluation_prompt(self, prompt: PromptTemplate) -> str:
+    def _create_quality_evaluation_prompt(self, prompt: PromptTemplate, output: str) -> str:
         """Create quality evaluation prompt for the LLM"""
         return f"""
-You are an expert prompt engineer. Your task is to evaluate the quality of this prompt template.
+You are an expert prompt engineer. Your task is to evaluate the quality of this prompt template using comprehensive criteria.
 
-PROMPT TEMPLATE TO EVALUATE:
-{prompt.template}
+COMPREHENSIVE EVALUATION CRITERIA:
+1. CLARITY & PRECISION (Weight: 25%)
+   - Is the prompt clear and unambiguous?
+   - Are instructions specific and actionable?
+   - Is the language appropriate for the target model?
 
-EVALUATION CRITERIA:
-1. Clarity: Is the prompt clear and unambiguous?
-2. Completeness: Does it provide sufficient context and instructions?
-3. Specificity: Is it specific enough to guide good responses?
-4. Structure: Is it well-structured and easy to follow?
-5. Effectiveness: Would this prompt likely produce high-quality responses?
-6. Template Variables: Are template variables appropriately used?
+2. COMPLETENESS & CONTEXT (Weight: 25%)
+   - Does it provide sufficient context and background?
+   - Are all necessary instructions included?
+   - Is the scope and purpose clearly defined?
 
-Please provide:
-1. A score from 0.0 to 1.0 (where 1.0 is excellent)
-2. Detailed reasoning for your score
+3. STRUCTURE & ORGANIZATION (Weight: 20%)
+   - Is it well-structured and easy to follow?
+   - Are sections logically organized?
+   - Is the flow natural and intuitive?
 
-Format your response as:
-SCORE: [number between 0.0 and 1.0]
-REASONING: [detailed explanation of your evaluation]
-"""
+4. EFFECTIVENESS & USABILITY (Weight: 20%)
+   - Would this prompt likely produce high-quality responses?
+   - Is it optimized for the target use case?
+   - Are examples or guidance provided when helpful?
 
+5. TEMPLATE DESIGN (Weight: 10%)
+   - Are template variables appropriately used?
+   - Is the template flexible and reusable?
+   - Are variable names clear and descriptive?
 
-class LLMSemanticFitnessFunction(LLMFitnessFunction):
-    """LLM-powered fitness function using semantic similarity"""
-    
-    async def evaluate(
-        self,
-        prompt: PromptTemplate,
-        test_cases: Optional[List[PromptTestCase]] = None,
-        runner: Optional[PromptRunner] = None,
-        model: str = "gpt-3.5-turbo",
-        **kwargs: Any
-    ) -> FitnessEvaluation:
-        """Evaluate using semantic similarity via LLM"""
-        
-        if test_cases is None or len(test_cases) == 0:
-            # Evaluate prompt quality without test cases
-            return await self._evaluate_prompt_quality(prompt)
-        
-        if runner is None:
-            raise ValueError("Runner is required when test cases are provided")
-        
-        test_results = []
-        for test_case in test_cases:
-            try:
-                response = await runner.run(
-                    model=model,
-                    prompt=prompt,
-                    variables=test_case.input_variables,
-                    **kwargs
-                )
-                test_results.append({
-                    "input": test_case.input_variables,
-                    "expected": test_case.expected_output,
-                    "actual": response.content,
-                    "metadata": test_case.metadata
-                })
-            except Exception as e:
-                test_results.append({
-                    "input": test_case.input_variables,
-                    "expected": test_case.expected_output,
-                    "actual": f"Error: {str(e)}",
-                    "error": str(e),
-                    "metadata": test_case.metadata
-                })
-        
-        # Use LLM to evaluate semantic similarity
-        similarity_prompt = self._create_similarity_prompt(test_results)
-        
-        try:
-            similarity_response = await self.evaluation_client.generate(
-                prompt=similarity_prompt,
-                model=self.evaluation_model,
-                temperature=0.3,
-                max_tokens=500
-            )
-            
-            score, reasoning = self._parse_similarity_response(similarity_response.content)
-            
-        except Exception as e:
-            score = 0.5
-            reasoning = f"Semantic evaluation failed: {str(e)}"
-        
-        return FitnessEvaluation(
-            prompt=prompt,
-            score=score,
-            test_results=test_results,
-            evaluation_reasoning=reasoning,
-            metadata={"evaluation_method": "llm_semantic"}
-        )
-    
-    def _create_similarity_prompt(self, test_results: List[Dict[str, Any]]) -> str:
-        """Create semantic similarity evaluation prompt"""
-        return f"""
-You are an expert at evaluating semantic similarity between texts. Evaluate how semantically similar the actual outputs are to the expected outputs.
-
-TEST RESULTS:
-{json.dumps(test_results, indent=2)}
-
-For each test case, consider:
-1. Do the actual and expected outputs convey the same meaning?
-2. Are key concepts and information preserved?
-3. Is the intent and purpose the same?
-
-Provide an overall similarity score from 0.0 to 1.0 and reasoning.
-
-Format:
-SCORE: [number between 0.0 and 1.0]
-REASONING: [detailed explanation]
-"""
-    
-    def _parse_similarity_response(self, response: str) -> Tuple[float, str]:
-        """Parse similarity evaluation response"""
-        # Similar parsing logic to accuracy function
-        try:
-            lines = response.strip().split('\n')
-            score_line = None
-            reasoning_lines = []
-            
-            for i, line in enumerate(lines):
-                if line.startswith('SCORE:'):
-                    score_line = line
-                    reasoning_lines = lines[i+1:]
-                    break
-            
-            if score_line:
-                score_str = score_line.split('SCORE:')[1].strip()
-                score = float(score_str)
-                reasoning = '\n'.join(reasoning_lines).replace('REASONING:', '').strip()
-                return score, reasoning
-            else:
-                # Fallback parsing
-                return 0.5, "Could not parse LLM evaluation response"
-                
-        except Exception:
-            return 0.5, "Error parsing evaluation response"
-    
-    async def _evaluate_prompt_quality(self, prompt: PromptTemplate) -> FitnessEvaluation:
-        """Evaluate prompt quality without test cases"""
-        
-        quality_prompt = self._create_quality_evaluation_prompt(prompt)
-        
-        try:
-            evaluation_response = await self.evaluation_client.generate(
-                prompt=quality_prompt,
-                model=self.evaluation_model,
-                temperature=0.3,
-                max_tokens=500
-            )
-            
-            score, reasoning = self._parse_similarity_response(evaluation_response.content)
-            
-        except Exception as e:
-            score = 0.5
-            reasoning = f"Quality evaluation failed: {str(e)}"
-        
-        return FitnessEvaluation(
-            prompt=prompt,
-            score=score,
-            test_results=[],  # No test results for quality evaluation
-            evaluation_reasoning=reasoning,
-            metadata={"evaluation_method": "prompt_quality"}
-        )
-    
-    def _create_quality_evaluation_prompt(self, prompt: PromptTemplate) -> str:
-        """Create quality evaluation prompt for the LLM"""
-        return f"""
-You are an expert prompt engineer. Your task is to evaluate the quality of this prompt template.
-
-PROMPT TEMPLATE TO EVALUATE:
-{prompt.template}
-
-EVALUATION CRITERIA:
-1. Clarity: Is the prompt clear and unambiguous?
-2. Completeness: Does it provide sufficient context and instructions?
-3. Specificity: Is it specific enough to guide good responses?
-4. Structure: Is it well-structured and easy to follow?
-5. Effectiveness: Would this prompt likely produce high-quality responses?
-6. Template Variables: Are template variables appropriately used?
+SCORING SCALE:
+- 0.9-1.0: Excellent - Production ready with outstanding quality
+- 0.7-0.89: Good - High quality with minor improvements needed
+- 0.5-0.69: Adequate - Decent quality but notable issues to address
+- 0.3-0.49: Poor - Significant quality problems requiring revision
+- 0.0-0.29: Critical - Major quality issues requiring complete redesign
 
 Please provide:
-1. A score from 0.0 to 1.0 (where 1.0 is excellent)
-2. Detailed reasoning for your score
+1. A comprehensive quality score from 0.0 to 1.0 (where 1.0 is excellent)
+2. Detailed reasoning covering all evaluation criteria
 
-Format your response as:
-SCORE: [number between 0.0 and 1.0]
-REASONING: [detailed explanation of your evaluation]
+==========
+PROMPT TEMPLATE TO EVALUATE:
+{prompt.template}
+==========
+
+==========
+OUTPUT TO EVALUATE:
+{output}
+
+Please respond with valid JSON matching this schema:
+{QualityEvaluationResponse.model_json_schema()}
 """
 
 
@@ -530,14 +397,16 @@ class LLMPromptMutator:
         mutation_prompt = self._create_mutation_prompt(prompt, mutation_type, mutation_strength)
         
         try:
-            mutation_response = await self.mutation_client.generate(
+            response = await self.mutation_client.generate(
                 prompt=mutation_prompt,
                 model=self.mutation_model,
                 temperature=0.7 + mutation_strength * 0.3,  # Higher temp for more creativity
                 max_tokens=1000
             )
             
-            mutated_template = self._extract_mutated_prompt(mutation_response.content)
+            mutation_response = MutationResponse.model_validate_json(response.content)
+            
+            mutated_template = mutation_response.mutated_prompt
             
             return PromptTemplate(
                 template=mutated_template,
@@ -545,6 +414,9 @@ class LLMPromptMutator:
                 metadata=prompt.metadata
             )
             
+        except (ValidationError, json.JSONDecodeError) as _:
+            # Fallback to simple mutation if JSON parsing fails
+            return self._simple_mutation(prompt)
         except Exception:
             # Fallback to simple mutation
             return self._simple_mutation(prompt)
@@ -580,22 +452,10 @@ IMPORTANT CONSTRAINTS:
 3. Only improve the prompt, don't change its fundamental nature
 4. The output should be a complete, usable prompt template
 
-Provide only the improved prompt template, no explanations or additional text.
+Please respond with valid JSON matching this schema:
+{MutationResponse.model_json_schema()}
 """
     
-    def _extract_mutated_prompt(self, response: str) -> str:
-        """Extract the mutated prompt from LLM response"""
-        # Clean up the response to extract just the prompt
-        lines = response.strip().split('\n')
-        
-        # Remove common prefixes/suffixes
-        cleaned_lines = []
-        for line in lines:
-            line = line.strip()
-            if line and not line.startswith('Here') and not line.startswith('The'):
-                cleaned_lines.append(line)
-        
-        return '\n'.join(cleaned_lines)
     
     def _simple_mutation(self, prompt: PromptTemplate) -> PromptTemplate:
         """Fallback simple mutation"""
@@ -643,15 +503,18 @@ class LLMPopulationGenerator:
                 max_tokens=2000
             )
             
-            variations = self._extract_variations(response.content, base_prompt)
+            generation_response = PopulationGenerationResponse.model_validate_json(response.content)
+            variations = self._create_variations_from_structured(generation_response.variations, base_prompt)
             
             # Add the original prompt as the first member
             population = [base_prompt] + variations
             
             return population[:population_size]
             
+        except (ValidationError, json.JSONDecodeError) as e:
+            raise ValueError("Failed to parse population generation response") from e
         except Exception as e:
-            raise Exception("Error during population generation") from e
+            raise ValueError("Failed to generate population") from e
     
     def _create_generation_prompt(self, base_prompt: PromptTemplate, num_variations: int, diversity_level: float) -> str:
         """Create prompt for LLM population generation"""
@@ -679,95 +542,25 @@ CONSTRAINTS:
 - Make each variation distinct and valuable
 - Ensure all variations can handle the same inputs and produce similar outputs
 
-Format your response as:
-VARIATION 1:
-[first prompt template]
-
-VARIATION 2:
-[second prompt template]
-
-...
-
-VARIATION {num_variations}:
-[{num_variations}th prompt template]
+Please respond with valid JSON matching this schema:
+{PopulationGenerationResponse.model_json_schema()}
 """
     
-    def _extract_variations(self, response: str, base_prompt: PromptTemplate) -> List[PromptTemplate]:
-        """Extract variations from LLM response"""
-        variations = []
+    
+    
+    def _create_variations_from_structured(self, variations: List[str], base_prompt: PromptTemplate) -> List[PromptTemplate]:
+        """Create PromptTemplate objects from structured response variations"""
+        prompt_templates = []
         
-        try:
-            # Split by "VARIATION X:" markers
-            parts = response.split('VARIATION ')
-            for i, part in enumerate(parts[1:], 1):  # Skip first empty part
-                lines = part.split('\n')
-                # Find the content after "VARIATION X:"
-                content_lines = []
-                found_start = False
-                
-                for line in lines:
-                    if ':' in line and not found_start:
-                        # Found the marker, get content after colon
-                        marker_content = line.split(':', 1)[1].strip()
-                        if marker_content:
-                            content_lines.append(marker_content)
-                        found_start = True
-                    elif found_start:
-                        content_lines.append(line)
-                
-                if content_lines:
-                    template_content = '\n'.join(content_lines).strip()
-                    if template_content:
-                        variations.append(PromptTemplate(
-                            template=template_content,
-                            name=f"{base_prompt.name}_llm_var_{i}",
+        for i, variation in enumerate(variations):
+            if variation.strip():  # Only process non-empty variations
+                prompt_templates.append(PromptTemplate(
+                    template=variation.strip(),
+                    name=f"{base_prompt.name}_llm_var_{i + 1}",
                             metadata=base_prompt.metadata
                         ))
             
-            # If parsing failed, try alternative approach
-            if not variations:
-                variations = self._alternative_parsing(response, base_prompt)
-                
-        except Exception:
-            # Fallback to alternative parsing
-            variations = self._alternative_parsing(response, base_prompt)
-        
-        return variations
-    
-    def _alternative_parsing(self, response: str, base_prompt: PromptTemplate) -> List[PromptTemplate]:
-        """Alternative parsing method if primary method fails"""
-        variations = []
-        
-        # Try to find prompt-like content by looking for template variables
-        lines = response.split('\n')
-        current_variation = []
-        
-        for line in lines:
-            line = line.strip()
-            if line and not line.startswith('VARIATION') and not line.startswith('You are'):
-                current_variation.append(line)
-            elif current_variation:
-                # Found a complete variation
-                template_content = '\n'.join(current_variation).strip()
-                if template_content and ('{' in template_content and '}' in template_content):
-                    variations.append(PromptTemplate(
-                        template=template_content,
-                        name=f"{base_prompt.name}_alt_var_{len(variations) + 1}",
-                        metadata=base_prompt.metadata
-                    ))
-                current_variation = []
-        
-        # Handle last variation
-        if current_variation:
-            template_content = '\n'.join(current_variation).strip()
-            if template_content and ('{' in template_content and '}' in template_content):
-                variations.append(PromptTemplate(
-                    template=template_content,
-                    name=f"{base_prompt.name}_alt_var_{len(variations) + 1}",
-                    metadata=base_prompt.metadata
-                ))
-        
-        return variations
+        return prompt_templates
 
 
 class LLMPromptCrossover:
@@ -786,27 +579,37 @@ class LLMPromptCrossover:
         
         crossover_prompt = self._create_crossover_prompt(parent1, parent2)
         
-        crossover_response = await self.crossover_client.generate(
-            prompt=crossover_prompt,
-            model=self.crossover_model,
-            temperature=0.6,
-            max_tokens=1500
-        )
-        
-        offspring1, offspring2 = self._extract_offspring(crossover_response.content)
-        
-        return (
-            PromptTemplate(
-                template=offspring1,
-                name=f"{parent1.name}_offspring1",
-                metadata=parent1.metadata
-            ),
-            PromptTemplate(
-                template=offspring2,
-                name=f"{parent2.name}_offspring2",
-                metadata=parent2.metadata
+        try:
+            response = await self.crossover_client.generate(
+                prompt=crossover_prompt,
+                model=self.crossover_model,
+                temperature=0.6,
+                max_tokens=1500
             )
-        )
+            
+            crossover_response = CrossoverResponse.model_validate_json(response.content)
+            
+            offspring1 = crossover_response.offspring1
+            offspring2 = crossover_response.offspring2
+            
+            return (
+                PromptTemplate(
+                    template=offspring1,
+                    name=f"{parent1.name}_offspring1",
+                    metadata=parent1.metadata
+                ),
+                PromptTemplate(
+                    template=offspring2,
+                    name=f"{parent2.name}_offspring2",
+                    metadata=parent2.metadata
+                )
+            )
+        except (ValidationError, json.JSONDecodeError) as _:
+            # Fallback to simple crossover if JSON parsing fails
+            return self._simple_crossover(parent1, parent2)
+        except Exception as _:
+            # Fallback to simple crossover
+            return self._simple_crossover(parent1, parent2)
             
     
     def _create_crossover_prompt(self, parent1: PromptTemplate, parent2: PromptTemplate) -> str:
@@ -827,39 +630,29 @@ INSTRUCTIONS:
 4. Make each offspring unique and innovative
 5. Ensure both offspring maintain the core functionality
 
-Provide the two offspring prompts in this exact format:
-OFFSPRING 1:
-[first prompt template]
-
-OFFSPRING 2:
-[second prompt template]
+Please respond with valid JSON matching this schema:
+{CrossoverResponse.model_json_schema()}
 """
     
-    def _extract_offspring(self, response: str) -> Tuple[str, str]:
-        """Extract offspring prompts from LLM response"""
-        try:
-            parts = response.split('OFFSPRING 1:')
-            if len(parts) < 2:
-                raise ValueError("Invalid format")
-            
-            offspring_section = parts[1]
-            offspring_parts = offspring_section.split('OFFSPRING 2:')
-            
-            if len(offspring_parts) < 2:
-                raise ValueError("Invalid format")
-            
-            offspring1 = offspring_parts[0].strip()
-            offspring2 = offspring_parts[1].strip()
-            
-            return offspring1, offspring2
-            
-        except Exception:
-            # Fallback parsing
-            lines = response.strip().split('\n')
-            mid_point = len(lines) // 2
-            offspring1 = '\n'.join(lines[:mid_point])
-            offspring2 = '\n'.join(lines[mid_point:])
-            return offspring1, offspring2
+    def _simple_crossover(self, parent1: PromptTemplate, parent2: PromptTemplate) -> Tuple[PromptTemplate, PromptTemplate]:
+        """Simple crossover as fallback when LLM crossover fails"""
+        # Simple approach: combine parts of both prompts
+        template1 = f"{parent1.template}\n\nAdditional context: {parent2.template}"
+        template2 = f"{parent2.template}\n\nAdditional context: {parent1.template}"
+        
+        return (
+            PromptTemplate(
+                template=template1,
+                name=f"{parent1.name}_simple_offspring1",
+                metadata=parent1.metadata
+            ),
+            PromptTemplate(
+                template=template2,
+                name=f"{parent2.name}_simple_offspring2",
+                metadata=parent2.metadata
+            )
+        )
+    
 
 
 
@@ -932,7 +725,7 @@ class LLMGeneticOptimizer:
 
         self.population_size = population_size
         self.generations = generations
-        self.fitness_function = fitness_function or LLMAccuracyFitnessFunction(self.eval_client)
+        self.fitness_function = fitness_function or LLMComprehensiveFitnessFunction(self.eval_client)
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
         self.elite_size = elite_size
@@ -973,9 +766,9 @@ class LLMGeneticOptimizer:
         
     async def optimize(
         self,
+        runner: PromptRunner,
         base_prompt: PromptTemplate,
         test_cases: Optional[List[PromptTestCase]] = None,
-        runner: Optional[PromptRunner] = None,
         **kwargs: Any
     ) -> OptimizationResult:
         """Run the LLM-powered genetic optimization process"""
@@ -1021,8 +814,9 @@ class LLMGeneticOptimizer:
             )
             total_evaluations += len(evaluations)
             
-            # Update fitness scores
-            self.fitness_scores = [eval.score for eval in evaluations]
+            # Check if we got any valid evaluations
+            if not evaluations:
+                raise ValueError("All fitness evaluations failed. No valid individuals in population.")
             
             # Find best individual
             best_idx = max(range(len(evaluations)), key=lambda i: evaluations[i].score)
@@ -1117,7 +911,7 @@ class LLMGeneticOptimizer:
     async def _evaluate_population(
         self, 
         test_cases: Optional[List[PromptTestCase]], 
-        runner: Optional[PromptRunner], 
+        runner: PromptRunner, 
         **kwargs: Any
     ) -> List[FitnessEvaluation]:
         """Evaluate fitness for entire population"""
@@ -1129,7 +923,7 @@ class LLMGeneticOptimizer:
         
         async def evaluate_single(prompt: PromptTemplate) -> FitnessEvaluation:
             async with semaphore:
-                return await self.fitness_function.evaluate(prompt, test_cases, runner, **kwargs)
+                return await self.fitness_function.evaluate(runner, prompt, test_cases, **kwargs)
         
         tasks = [evaluate_single(prompt) for prompt in self.population]
         evaluations = await asyncio.gather(*tasks, return_exceptions=True)

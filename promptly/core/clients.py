@@ -1,12 +1,14 @@
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Type, TypeVar
 import openai
 import anthropic
 from pydantic import BaseModel, Field
 
 from .utils.env import get_env_var
 from .tracer import UsageData
+
+T = TypeVar('T', bound=BaseModel)
 
 ENV_OPENAI_API_KEY = get_env_var("OPENAI_API_KEY")
 ENV_ANTHROPIC_API_KEY = get_env_var("ANTHROPIC_API_KEY")
@@ -33,6 +35,19 @@ class BaseLLMClient(ABC):
         **kwargs: Any,
     ) -> LLMResponse:
         """Generate response from LLM"""
+        pass
+
+    @abstractmethod
+    async def generate_structured(
+        self,
+        prompt: str,
+        response_model: Type[T],
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ) -> T:
+        """Generate structured response from LLM"""
         pass
 
     @abstractmethod
@@ -77,6 +92,28 @@ class OpenAIClient(BaseLLMClient):
             },
         )
 
+    async def generate_structured(
+        self,
+        prompt: str,
+        response_model: Type[T],
+        model: Optional[str] = None,
+        **kwargs: Any,
+    ) -> T:
+        """Generate structured response using OpenAI"""
+        model = model or self.default_model
+
+        response = await self.client.beta.chat.completions.parse(
+            model=model,
+            messages=[{"role": "system", "content": prompt}],
+            response_format=response_model,
+            **kwargs,
+        )
+
+        parsed = response.choices[0].message.parsed
+        if parsed is None:
+            raise ValueError("Failed to parse structured response")
+        return parsed
+
     async def get_available_models(self) -> List[str]:
         models = await self.client.models.list()
         return [model.id for model in models.data]
@@ -116,6 +153,33 @@ class AnthropicClient(BaseLLMClient):
             metadata={"stop_reason": response.stop_reason, "response_id": response.id},
         )
 
+    async def generate_structured(
+        self,
+        prompt: str,
+        response_model: Type[T],
+        model: Optional[str] = None,
+        **kwargs: Any,
+    ) -> T:
+        """Generate structured response using Anthropic"""
+        model = model or self.default_model
+
+        # Anthropic doesn't have native structured output, so we use JSON mode
+        json_prompt = f"{prompt}\n\nPlease respond with valid JSON matching this schema: {response_model.model_json_schema()}"
+        
+        response = await self.client.messages.create(
+            model=model,
+            system=json_prompt,
+            **kwargs,
+        )
+
+        # Parse the JSON response
+        import json
+        try:
+            json_data = json.loads(response.content[0].text)
+            return response_model(**json_data)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise ValueError(f"Failed to parse structured response: {e}")
+
     async def get_available_models(self) -> List[str]:
         models = await self.client.models.list(limit=1000)
         return [model.id for model in models.data]
@@ -143,6 +207,19 @@ class LocalLLMClient(BaseLLMClient):
             model=model or self.default_model,
             usage=UsageData(prompt_tokens=0, completion_tokens=0, total_tokens=0),
         )
+
+    async def generate_structured(
+        self,
+        prompt: str,
+        response_model: Type[T],
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ) -> T:
+        """Generate structured response using local model"""
+        # TODO: Implement this
+        raise NotImplementedError("LocalLLMClient does not support structured output")
 
     def get_available_models(self) -> List[str]:
         return ["llama2", "mistral", "codellama"]

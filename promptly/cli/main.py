@@ -18,8 +18,7 @@ from ..core.tracer import Tracer
 from ..core.clients import OpenAIClient, AnthropicClient
 from ..core.optimizer import (
     LLMGeneticOptimizer,
-    LLMAccuracyFitnessFunction,
-    LLMSemanticFitnessFunction,
+    LLMComprehensiveFitnessFunction,
     PromptTestCase,
     ProgressCallback,
     OptimizationResult,
@@ -358,7 +357,6 @@ def trace(trace_id: Optional[str], optimizer_only: bool, optimization_id: Option
 @click.option("--mutation-rate", default=0.3, help="Mutation rate (0.0-1.0)")
 @click.option("--crossover-rate", default=0.7, help="Crossover rate (0.0-1.0)")
 @click.option("--elite-size", default=2, help="Number of elite individuals to preserve")
-@click.option("--fitness-type", default="accuracy", type=click.Choice(["accuracy", "semantic"]), help="Fitness function type")
 @click.option("--trace", is_flag=True, help="Enable tracing", default=True)
 @click.option("--trace-optimizer", is_flag=True, help="Enable tracing of optimizer prompts with separate context", default=False)
 @click.option("--output", "-o", help="Output file to save the optimized prompt")
@@ -378,7 +376,6 @@ def optimize(
     mutation_rate: float,
     crossover_rate: float,
     elite_size: int,
-    fitness_type: str,
     trace: bool,
     trace_optimizer: bool,
     output: Optional[str],
@@ -434,15 +431,8 @@ def optimize(
             # Create base prompt template
             base_template = PromptTemplate(template=base_prompt, name="base_prompt")
             
-            # Initialize fitness function
-            if fitness_type == "accuracy":
-                fitness_function = LLMAccuracyFitnessFunction(eval_client, eval_model)
-            elif fitness_type == "semantic":
-                fitness_function = LLMSemanticFitnessFunction(eval_client, eval_model)
-            else:
-                click.echo(f"Unsupported fitness type: {fitness_type}")
-                return
-            
+            fitness_function = LLMComprehensiveFitnessFunction(eval_client, eval_model)
+
             # Initialize optimizer (callback will be set later)
             optimizer = LLMGeneticOptimizer(
                 population_size=population_size,
@@ -490,7 +480,6 @@ def optimize(
             
             config_table.add_row("Population Size", f"[bold green]{population_size}[/bold green]")
             config_table.add_row("Generations", f"[bold green]{generations}[/bold green]")
-            config_table.add_row("Fitness Type", f"[bold blue]{fitness_type}[/bold blue]")
             
             llm_pop_status = "[bold green]✅ Enabled[/bold green]" if use_llm_population else "[bold red]❌ Disabled[/bold red]"
             config_table.add_row("LLM Population Generation", llm_pop_status)
@@ -589,7 +578,7 @@ def optimize(
                 optimizer.progress_callback = progress_callback
                 
                 # Start optimization
-                result = await optimizer.optimize(base_template, test_cases_list, runner, model=model)
+                result = await optimizer.optimize(runner, base_template, test_cases_list, model=model)
             
             # Display results with celebration
             console.print()

@@ -3,13 +3,11 @@ Tests for optimizer module
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import json
+from unittest.mock import AsyncMock
 from typing import Optional, List
 from promptly.core.optimizer import (
     LLMGeneticOptimizer,
-    LLMAccuracyFitnessFunction,
-    LLMSemanticFitnessFunction,
+    LLMComprehensiveFitnessFunction,
     PromptTestCase,
     OptimizationResult,
     FitnessEvaluation,
@@ -19,18 +17,27 @@ from promptly.core.optimizer import (
 )
 from promptly.core.templates import PromptTemplate
 from promptly.core.clients import BaseLLMClient, LLMResponse
-from promptly.core.tracer import Tracer, UsageData
+from promptly.core.tracer import UsageData
 
 
 class MockLLMClient(BaseLLMClient):
     """Mock LLM client for testing"""
     
-    def __init__(self, responses=None):
+    def __init__(self, responses=None, structured_responses=None):
         self.responses = responses or []
+        self.structured_responses = structured_responses or []
         self.call_count = 0
+        self.structured_call_count = 0
     
     async def generate(self, prompt: str, model: Optional[str] = None, **kwargs) -> LLMResponse:
-        response_text = self.responses[self.call_count % len(self.responses)] if self.responses else "Mock response"
+        if self.structured_responses:
+            # Return JSON response for structured calls
+            import json
+            response_data = self.structured_responses[self.call_count % len(self.structured_responses)]
+            response_text = json.dumps(response_data)
+        else:
+            response_text = self.responses[self.call_count % len(self.responses)] if self.responses else "Mock response"
+        
         self.call_count += 1
         
         return LLMResponse(
@@ -39,6 +46,16 @@ class MockLLMClient(BaseLLMClient):
             usage=UsageData(prompt_tokens=10, completion_tokens=5, total_tokens=15),
             metadata={"mock": True}
         )
+    
+    async def generate_structured(self, prompt: str, response_model, model: Optional[str] = None, **kwargs):
+        """Mock structured generation"""
+        if self.structured_responses:
+            response_data = self.structured_responses[self.structured_call_count % len(self.structured_responses)]
+            self.structured_call_count += 1
+            return response_model(**response_data)
+        else:
+            # Return a default instance
+            return response_model()
     
     def get_available_models(self) -> List[str]:
         return ["mock-model"]
@@ -88,17 +105,17 @@ class TestFitnessEvaluation:
         assert evaluation.metadata == {"method": "accuracy"}
 
 
-class TestLLMAccuracyFitnessFunction:
-    """Test LLM accuracy fitness function"""
+class TestLLMComprehensiveFitnessFunction:
+    """Test LLM comprehensive fitness function"""
     
     @pytest.mark.asyncio
     async def test_evaluate_with_mock_client(self):
         """Test fitness evaluation with mock client"""
-        mock_client = MockLLMClient([
-            "SCORE: 0.8\nREASONING: The prompt performs well on most test cases."
+        mock_client = MockLLMClient(structured_responses=[
+            {"score": 0.8, "reasoning": "The prompt performs well on most test cases."}
         ])
         
-        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
         
         prompt = PromptTemplate(template="Answer: {{question}}", name="test")
         test_cases = [
@@ -114,7 +131,7 @@ class TestLLMAccuracyFitnessFunction:
             usage=UsageData()
         )
         
-        result = await fitness_function.evaluate(prompt, test_cases, mock_runner)
+        result = await fitness_function.evaluate(mock_runner, prompt, test_cases)
         
         assert isinstance(result, FitnessEvaluation)
         assert result.score == 0.8
@@ -123,55 +140,31 @@ class TestLLMAccuracyFitnessFunction:
     
     @pytest.mark.asyncio
     async def test_evaluate_without_test_cases(self):
-        """Test fitness evaluation without test cases (quality-based)"""
-        mock_client = MockLLMClient([
-            "SCORE: 0.75\nREASONING: The prompt is clear and well-structured."
+        """Test fitness evaluation without test cases - evaluates prompt quality directly"""
+        # Mock client returns quality-based evaluation
+        mock_client = MockLLMClient(structured_responses=[
+            {"score": 0.75, "reasoning": "The prompt is clear and well-structured."}
         ])
         
-        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        # Mock runner needed for quality evaluation
+        mock_runner = AsyncMock()
+        mock_runner.run.return_value = LLMResponse(
+            content="Sample output from the prompt",
+            model="test-model",
+            usage=UsageData()
+        )
         
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
         prompt = PromptTemplate(template="Answer: {{question}}", name="test")
         
-        result = await fitness_function.evaluate(prompt, test_cases=None, runner=None)
+        # When no test cases provided, evaluates based on prompt quality
+        result = await fitness_function.evaluate(mock_runner, prompt, test_cases=None)
         
         assert isinstance(result, FitnessEvaluation)
         assert result.score == 0.75
         assert result.evaluation_reasoning == "The prompt is clear and well-structured."
         assert len(result.test_results) == 0
-        assert result.metadata["evaluation_method"] == "prompt_quality"
-    
-    def test_parse_evaluation_response(self):
-        """Test parsing of LLM evaluation response"""
-        fitness_function = LLMAccuracyFitnessFunction(MockLLMClient())
-        
-        response = "SCORE: 0.75\nREASONING: Good performance overall."
-        score, reasoning = fitness_function._parse_evaluation_response(response)
-        
-        assert score == 0.75
-        assert reasoning == "Good performance overall."
-    
-    def test_parse_evaluation_response_fallback(self):
-        """Test parsing fallback for malformed response"""
-        fitness_function = LLMAccuracyFitnessFunction(MockLLMClient())
-        
-        response = "Invalid response format"
-        score, reasoning = fitness_function._parse_evaluation_response(response)
-        
-        assert score == 0.5
-        assert "Could not parse" in reasoning
-    
-    def test_calculate_simple_accuracy(self):
-        """Test simple accuracy calculation"""
-        fitness_function = LLMAccuracyFitnessFunction(MockLLMClient())
-        
-        test_results = [
-            {"actual": "4", "expected": "4"},
-            {"actual": "6", "expected": "6"},
-            {"actual": "5", "expected": "4"},  # Wrong
-        ]
-        
-        accuracy = fitness_function._calculate_simple_accuracy(test_results)
-        assert accuracy == 2/3  # 2 out of 3 correct
+        assert result.metadata["evaluation_method"] == "comprehensive_prompt_quality"
 
 
 class TestLLMPromptMutator:
@@ -180,8 +173,8 @@ class TestLLMPromptMutator:
     @pytest.mark.asyncio
     async def test_mutate_with_mock_client(self):
         """Test prompt mutation with mock client"""
-        mock_client = MockLLMClient([
-            "Improved prompt template with better instructions."
+        mock_client = MockLLMClient(structured_responses=[
+            {"mutated_prompt": "Improved prompt template with better instructions."}
         ])
         
         mutator = LLMPromptMutator(mock_client)
@@ -198,7 +191,7 @@ class TestLLMPromptMutator:
         """Test mutation fallback when LLM fails"""
         # Mock client that raises an exception
         mock_client = AsyncMock()
-        mock_client.generate.side_effect = Exception("API error")
+        mock_client.generate_structured.side_effect = Exception("API error")
         
         mutator = LLMPromptMutator(mock_client)
         prompt = PromptTemplate(template="Original prompt", name="test")
@@ -228,8 +221,8 @@ class TestLLMPromptCrossover:
     @pytest.mark.asyncio
     async def test_crossover_with_mock_client(self):
         """Test prompt crossover with mock client"""
-        mock_client = MockLLMClient([
-            "OFFSPRING 1:\nCombined prompt 1\n\nOFFSPRING 2:\nCombined prompt 2"
+        mock_client = MockLLMClient(structured_responses=[
+            {"offspring1": "Combined prompt 1", "offspring2": "Combined prompt 2"}
         ])
         
         crossover = LLMPromptCrossover(mock_client)
@@ -250,7 +243,7 @@ class TestLLMGeneticOptimizer:
     def test_optimizer_initialization(self):
         """Test optimizer initialization"""
         mock_client = MockLLMClient()
-        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
         
         optimizer = LLMGeneticOptimizer(
             population_size=5,
@@ -269,7 +262,7 @@ class TestLLMGeneticOptimizer:
     def test_initialize_population(self):
         """Test population initialization"""
         mock_client = MockLLMClient()
-        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
         
         optimizer = LLMGeneticOptimizer(
             population_size=5,
@@ -290,7 +283,7 @@ class TestLLMGeneticOptimizer:
     def test_tournament_selection(self):
         """Test tournament selection"""
         mock_client = MockLLMClient()
-        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
         
         optimizer = LLMGeneticOptimizer(
             population_size=5,
@@ -336,17 +329,18 @@ class TestLLMGeneticOptimizer:
     async def test_optimize_mock_run(self):
         """Test optimization with mocked components"""
         # Mock clients with predictable responses
-        mock_main_client = MockLLMClient(["4", "6", "8"])
-        mock_eval_client = MockLLMClient([
-            "SCORE: 0.8\nREASONING: Good performance.",
-            "SCORE: 0.9\nREASONING: Excellent performance.",
+        mock_eval_client = MockLLMClient(structured_responses=[
+            {"score": 0.8, "reasoning": "Good performance."},
+            {"score": 0.9, "reasoning": "Excellent performance."},
         ])
-        mock_mutation_client = MockLLMClient(["Improved prompt"])
-        mock_crossover_client = MockLLMClient([
-            "OFFSPRING 1:\nCombined 1\n\nOFFSPRING 2:\nCombined 2"
+        mock_mutation_client = MockLLMClient(structured_responses=[
+            {"mutated_prompt": "Improved prompt"}
+        ])
+        mock_crossover_client = MockLLMClient(structured_responses=[
+            {"offspring1": "Combined 1", "offspring2": "Combined 2"}
         ])
         
-        fitness_function = LLMAccuracyFitnessFunction(mock_eval_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_eval_client)
         
         optimizer = LLMGeneticOptimizer(
             population_size=3,
@@ -369,7 +363,7 @@ class TestLLMGeneticOptimizer:
             usage=UsageData()
         )
         
-        result = await optimizer.optimize(base_prompt, test_cases, mock_runner)
+        result = await optimizer.optimize(mock_runner, base_prompt, test_cases)
         
         assert isinstance(result, OptimizationResult)
         assert result.best_prompt is not None
@@ -380,30 +374,48 @@ class TestLLMGeneticOptimizer:
     
     @pytest.mark.asyncio
     async def test_optimize_without_test_cases(self):
-        """Test optimization without test cases (quality-based)"""
-        # Mock clients with predictable responses
-        mock_eval_client = MockLLMClient([
-            "SCORE: 0.8\nREASONING: Good prompt quality.",
-            "SCORE: 0.9\nREASONING: Excellent prompt quality.",
+        """Test optimization without test cases - evaluates based on prompt quality"""
+        # When no test cases provided, quality-based evaluation is used
+        # Provide enough responses for multiple generations of evaluations
+        mock_eval_client = MockLLMClient(structured_responses=[
+            {"score": 0.6, "reasoning": "Decent prompt quality."},
+            {"score": 0.75, "reasoning": "Good prompt quality."},
+            {"score": 0.85, "reasoning": "Very good prompt quality."},
+            {"score": 0.8, "reasoning": "Good quality with clear structure."},
+            {"score": 0.9, "reasoning": "Excellent prompt quality."},
+            {"score": 0.88, "reasoning": "High quality prompt."},
+            {"score": 0.82, "reasoning": "Strong prompt design."},
+            {"score": 0.78, "reasoning": "Well-structured prompt."},
         ])
-        mock_mutation_client = MockLLMClient(["Improved prompt"])
-        mock_crossover_client = MockLLMClient([
-            "OFFSPRING 1:\nCombined 1\n\nOFFSPRING 2:\nCombined 2"
+        mock_mutation_client = MockLLMClient(structured_responses=[
+            {"mutated_prompt": "Write a clear and comprehensive response with helpful details."},
+            {"mutated_prompt": "Provide a well-structured and informative answer."},
+            {"mutated_prompt": "Create an engaging and detailed response."},
+        ])
+        mock_crossover_client = MockLLMClient(structured_responses=[
+            {"offspring1": "Write a thorough and helpful response.", "offspring2": "Provide clear and detailed information."},
+            {"offspring1": "Create a well-organized answer.", "offspring2": "Write an informative explanation."},
         ])
         
-        fitness_function = LLMAccuracyFitnessFunction(mock_eval_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_eval_client)
         
+        # Create optimizer
         optimizer = LLMGeneticOptimizer(
             population_size=3,
             generations=2,
             fitness_function=fitness_function,
             mutation_client=mock_mutation_client,
-            crossover_client=mock_crossover_client
+            crossover_client=mock_crossover_client,
         )
         
-        base_prompt = PromptTemplate(template="Answer: {{question}}", name="base")
+        # Use a template without variables since quality evaluation doesn't provide test inputs
+        base_prompt = PromptTemplate(template="Write a helpful and informative response.", name="base")
         
-        result = await optimizer.optimize(base_prompt, test_cases=None, runner=None)
+        # Create a proper mock runner
+        from promptly.core.runner import PromptRunner
+        mock_runner = PromptRunner(client=mock_eval_client)
+        
+        result = await optimizer.optimize(mock_runner, base_prompt, test_cases=None)
         
         assert isinstance(result, OptimizationResult)
         assert result.best_prompt is not None
@@ -469,21 +481,16 @@ class TestLLMPopulationGenerator:
     @pytest.mark.asyncio
     async def test_generate_initial_population_success(self):
         """Test successful population generation"""
-        # Mock LLM response with proper format
-        mock_response = """
-VARIATION 1:
-Please answer the following question: {{question}}
-
-VARIATION 2:
-Task: {{question}}
-
-VARIATION 3:
-{{question}}
-
-Please provide a detailed response.
-"""
-        
-        mock_client = MockLLMClient(responses=[mock_response])
+        # Mock structured response
+        mock_client = MockLLMClient(structured_responses=[
+            {
+                "variations": [
+                    "Please answer the following question: {{question}}",
+                    "Task: {{question}}",
+                    "{{question}}\n\nPlease provide a detailed response."
+                ]
+            }
+        ])
         generator = LLMPopulationGenerator(mock_client)
         
         base_prompt = PromptTemplate(
@@ -505,33 +512,6 @@ Please provide a detailed response.
         assert population[3].name.startswith("test_prompt_llm_var_")
     
     
-    @pytest.mark.asyncio
-    async def test_generate_initial_population_parsing_fallback(self):
-        """Test fallback parsing when primary parsing fails"""
-        # Mock LLM response with poor format
-        mock_response = """
-Here are some variations:
-
-Answer the following question: {{question}}
-
-Please respond to: {{question}}
-
-Consider this question: {{question}}
-"""
-        
-        mock_client = MockLLMClient(responses=[mock_response])
-        generator = LLMPopulationGenerator(mock_client)
-        
-        base_prompt = PromptTemplate(
-            template="Answer this: {{question}}",
-            name="test_prompt"
-        )
-        
-        population = await generator.generate_initial_population(base_prompt, 4, 0.7)
-        
-        assert len(population) >= 2  # At least original + some variations
-        assert population[0].template == "Answer this: {{question}}"  # Original prompt
-    
     def test_create_generation_prompt(self):
         """Test prompt generation for LLM"""
         mock_client = MockLLMClient()
@@ -547,12 +527,10 @@ Consider this question: {{question}}
         assert "Answer this: {{question}}" in prompt
         assert "3" in prompt
         assert "0.8" in prompt
-        assert "VARIATION 1:" in prompt
-        assert "VARIATION 2:" in prompt
-        assert "VARIATION 3:" in prompt
+        assert "variations" in prompt.lower()
     
-    def test_extract_variations_success(self):
-        """Test successful variation extraction"""
+    def test_create_variations_from_structured(self):
+        """Test creating variations from structured response"""
         mock_client = MockLLMClient()
         generator = LLMPopulationGenerator(mock_client)
         
@@ -561,47 +539,19 @@ Consider this question: {{question}}
             name="test_prompt"
         )
         
-        response = """
-VARIATION 1:
-Please answer: {{question}}
-
-VARIATION 2:
-{{question}}
-
-Please provide details.
-"""
+        variations_data = [
+            "Please answer: {{question}}",
+            "{{question}}\n\nPlease provide details."
+        ]
         
-        variations = generator._extract_variations(response, base_prompt)
+        variations = generator._create_variations_from_structured(variations_data, base_prompt)
         
         assert len(variations) == 2
         assert "Please answer: {{question}}" in variations[0].template
         assert "{{question}}" in variations[1].template
         assert "Please provide details." in variations[1].template
-    
-    def test_extract_variations_alternative_parsing(self):
-        """Test alternative parsing method"""
-        mock_client = MockLLMClient()
-        generator = LLMPopulationGenerator(mock_client)
-        
-        base_prompt = PromptTemplate(
-            template="Answer this: {{question}}",
-            name="test_prompt"
-        )
-        
-        response = """
-Answer the following question: {{question}}
-
-Please respond to: {{question}}
-
-Consider this question: {{question}}
-"""
-        
-        variations = generator._alternative_parsing(response, base_prompt)
-        
-        assert len(variations) >= 2
-        for variation in variations:
-            assert "{{question}}" in variation.template
-            assert variation.name.startswith("test_prompt_alt_var_")
+        assert variations[0].name.startswith("test_prompt_llm_var_")
+        assert variations[1].name.startswith("test_prompt_llm_var_")
     
 
 
@@ -612,7 +562,7 @@ class TestLLMGeneticOptimizerWithPopulationGeneration:
     async def test_optimizer_with_llm_population_generation(self):
         """Test optimizer initialization with LLM population generation"""
         mock_client = MockLLMClient()
-        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
         
         optimizer = LLMGeneticOptimizer(
             population_size=5,
@@ -632,7 +582,7 @@ class TestLLMGeneticOptimizerWithPopulationGeneration:
     async def test_optimizer_without_llm_population_generation(self):
         """Test optimizer initialization without LLM population generation"""
         mock_client = MockLLMClient()
-        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
         
         optimizer = LLMGeneticOptimizer(
             population_size=5,
@@ -648,24 +598,17 @@ class TestLLMGeneticOptimizerWithPopulationGeneration:
     @pytest.mark.asyncio
     async def test_initialize_population_with_llm(self):
         """Test population initialization using LLM"""
-        # Mock successful LLM response
-        mock_response = """
-VARIATION 1:
-Please answer: {{question}}
-
-VARIATION 2:
-{{question}}
-
-Provide details.
-
-VARIATION 3:
-Answer the following question: {{question}}
-
-Be specific and clear.
-"""
-        
-        mock_client = MockLLMClient(responses=[mock_response])
-        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        # Mock successful structured response
+        mock_client = MockLLMClient(structured_responses=[
+            {
+                "variations": [
+                    "Please answer: {{question}}",
+                    "{{question}}\n\nProvide details.",
+                    "Answer the following question: {{question}}\n\nBe specific and clear."
+                ]
+            }
+        ])
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
         
         optimizer = LLMGeneticOptimizer(
             population_size=4,
@@ -690,7 +633,7 @@ Be specific and clear.
     async def test_initialize_population_simple_when_disabled(self):
         """Test simple population initialization when LLM generation is disabled"""
         mock_client = MockLLMClient()
-        fitness_function = LLMAccuracyFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
         
         optimizer = LLMGeneticOptimizer(
             population_size=4,

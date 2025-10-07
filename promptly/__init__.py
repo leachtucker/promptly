@@ -16,8 +16,7 @@ from .core.clients import BaseLLMClient, LLMResponse, OpenAIClient, AnthropicCli
 from .core.tracer import Tracer, TraceRecord
 from .core.optimizer import (
     LLMGeneticOptimizer,
-    LLMAccuracyFitnessFunction,
-    LLMSemanticFitnessFunction,
+    LLMComprehensiveFitnessFunction,
     PromptTestCase,
     OptimizationResult,
     FitnessEvaluation,
@@ -34,8 +33,7 @@ __all__ = [
     "Tracer",
     "TraceRecord",
     "LLMGeneticOptimizer",
-    "LLMAccuracyFitnessFunction",
-    "LLMSemanticFitnessFunction",
+    "LLMComprehensiveFitnessFunction",
     "PromptTestCase",
     "OptimizationResult",
     "FitnessEvaluation",
