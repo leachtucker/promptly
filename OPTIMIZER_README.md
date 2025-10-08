@@ -107,7 +107,6 @@ python -m promptly.cli.main optimize \
   --test-cases writing_tests.json \
   --population-size 6 \
   --generations 4 \
-  --fitness-type semantic \
   --provider anthropic \
   --model claude-3-sonnet-20240229 \
   --mutation-rate 0.5 \
@@ -148,7 +147,6 @@ python -m promptly.cli.main optimize \
   --elite-size 4 \
   --mutation-rate 0.4 \
   --crossover-rate 0.8 \
-  --fitness-type accuracy \
   --trace
 ```
 
@@ -177,8 +175,7 @@ python -m promptly.cli.main optimize \
   --provider anthropic \
   --model claude-3-sonnet-20240229 \
   --eval-model claude-3-sonnet-20240229 \
-  --api-key $ANTHROPIC_API_KEY \
-  --fitness-type semantic
+  --api-key $ANTHROPIC_API_KEY
 ```
 
 ### Automated Optimization (Skip Confirmation)
@@ -208,7 +205,6 @@ python -m promptly.cli.main optimize \
   --provider openai \
   --model gpt-4 \
   --eval-model gpt-4 \
-  --fitness-type accuracy \
   --mutation-rate 0.4 \
   --crossover-rate 0.8
 ```
@@ -265,7 +261,7 @@ The optimizer provides detailed API call estimation and cost analysis before run
 import asyncio
 from promptly import (
     LLMGeneticOptimizer,
-    LLMAccuracyFitnessFunction,
+    LLMComprehensiveFitnessFunction,
     PromptTestCase,
     PromptTemplate,
     PromptRunner,
@@ -276,8 +272,6 @@ async def optimize_prompt():
     # Setup clients
     main_client = OpenAIClient()
     eval_client = OpenAIClient()
-    mutation_client = OpenAIClient()
-    crossover_client = OpenAIClient()
     
     runner = PromptRunner(main_client)
     
@@ -301,15 +295,15 @@ async def optimize_prompt():
     
     # Setup optimizer
     optimizer = LLMGeneticOptimizer(
+        eval_model="gpt-4",
         population_size=10,
         generations=5,
-        fitness_function=LLMAccuracyFitnessFunction(eval_client),
-        mutation_client=mutation_client,
-        crossover_client=crossover_client,
+        fitness_function=LLMComprehensiveFitnessFunction(eval_client, "gpt-4"),
+        eval_client=eval_client,
     )
     
     # Run optimization
-    result = await optimizer.optimize(base_prompt, test_cases, runner)
+    result = await optimizer.optimize(runner, base_prompt, test_cases)
     
     print(f"Best prompt: {result.best_prompt.template}")
     print(f"Fitness score: {result.fitness_score}")
@@ -324,16 +318,18 @@ asyncio.run(optimize_prompt())
 import asyncio
 from promptly import (
     LLMGeneticOptimizer,
-    LLMAccuracyFitnessFunction,
+    LLMComprehensiveFitnessFunction,
     PromptTemplate,
+    PromptRunner,
     OpenAIClient,
 )
 
 async def optimize_prompt_quality():
     # Setup clients
     eval_client = OpenAIClient()
-    mutation_client = OpenAIClient()
-    crossover_client = OpenAIClient()
+    
+    # Create runner for optimization
+    runner = PromptRunner(eval_client)
     
     # Create base prompt
     base_prompt = PromptTemplate(
@@ -343,15 +339,15 @@ async def optimize_prompt_quality():
     
     # Setup optimizer for quality-based optimization
     optimizer = LLMGeneticOptimizer(
+        eval_model="gpt-4",
         population_size=8,
         generations=4,
-        fitness_function=LLMAccuracyFitnessFunction(eval_client),
-        mutation_client=mutation_client,
-        crossover_client=crossover_client,
+        fitness_function=LLMComprehensiveFitnessFunction(eval_client, "gpt-4"),
+        eval_client=eval_client,
     )
     
-    # Run optimization without test cases
-    result = await optimizer.optimize(base_prompt, test_cases=None, runner=None)
+    # Run optimization without test cases (quality-based)
+    result = await optimizer.optimize(runner, base_prompt, test_cases=None)
     
     print(f"Best prompt: {result.best_prompt.template}")
     print(f"Quality score: {result.fitness_score}")
@@ -363,29 +359,34 @@ asyncio.run(optimize_prompt_quality())
 ### Advanced Configuration
 
 ```python
-# Custom fitness function
-fitness_function = LLMAccuracyFitnessFunction(
+from promptly import (
+    LLMGeneticOptimizer,
+    LLMComprehensiveFitnessFunction,
+    OpenAIClient,
+    Tracer
+)
+
+# Setup client
+eval_client = OpenAIClient()
+
+# Configure comprehensive fitness function
+fitness_function = LLMComprehensiveFitnessFunction(
     evaluation_client=eval_client,
     evaluation_model="gpt-4"  # Use GPT-4 for evaluation
 )
 
-# Semantic similarity fitness
-semantic_fitness = LLMSemanticFitnessFunction(
-    evaluation_client=eval_client,
-    evaluation_model="gpt-4"
-)
-
-# Configure optimizer
+# Configure optimizer with advanced options
 optimizer = LLMGeneticOptimizer(
+    eval_model="gpt-4",
     population_size=20,
     generations=10,
     fitness_function=fitness_function,
-    mutation_rate=0.3,      # 30% chance of mutation
-    crossover_rate=0.7,     # 70% chance of crossover
-    elite_size=2,           # Keep top 2 individuals
-    mutation_client=mutation_client,
-    crossover_client=crossover_client,
-    tracer=Tracer()         # Enable tracing
+    eval_client=eval_client,
+    mutation_rate=0.3,                    # 30% chance of mutation
+    crossover_rate=0.7,                   # 70% chance of crossover
+    elite_size=2,                         # Keep top 2 individuals
+    population_diversity_level=0.7,       # Diversity level for LLM population generation
+    tracer=Tracer()                       # Enable tracing
 )
 ```
 
@@ -402,13 +403,14 @@ Options:
   --population-size INTEGER       Population size for genetic algorithm (default: 10)
   --generations INTEGER           Number of generations to run (default: 5)
   -m, --model TEXT                Model to use for prompt execution (default: gpt-3.5-turbo)
-  --eval-model TEXT               Model to use for evaluation (default: gpt-4)
+  --eval-model TEXT               Model to use for evaluation (default: gpt-5-mini-2025-08-07)
   --provider [openai|anthropic]   LLM provider (default: openai)
   --api-key TEXT                  API key for the provider
   --mutation-rate FLOAT           Mutation rate 0.0-1.0 (default: 0.3)
   --crossover-rate FLOAT          Crossover rate 0.0-1.0 (default: 0.7)
   --elite-size INTEGER            Number of elite individuals to preserve (default: 2)
-  --fitness-type [accuracy|semantic]  Fitness function type (default: accuracy)
+  --use-llm-population            Use LLM to generate initial population (default: True)
+  --population-diversity FLOAT    Diversity level for population generation 0.0-1.0 (default: 0.7)
   --trace                         Enable tracing (default: True)
   -o, --output TEXT               Output file to save the optimized prompt
   -y, --yes                       Skip confirmation prompt and proceed automatically
@@ -419,21 +421,25 @@ Options:
 ### Core Components
 
 1. **LLMFitnessFunction**: Abstract base class for fitness evaluation
-   - `LLMAccuracyFitnessFunction`: Evaluates exact match accuracy
-   - `LLMSemanticFitnessFunction`: Evaluates semantic similarity
+   - `LLMComprehensiveFitnessFunction`: Comprehensive evaluation combining accuracy and semantic similarity
 
 2. **LLMPromptMutator**: LLM-powered prompt mutation
-   - Intelligent prompt improvements
-   - Fallback to simple mutations
+   - Intelligent prompt improvements using LLM
+   - Strictly LLM-driven (no fallbacks)
 
 3. **LLMPromptCrossover**: LLM-powered prompt crossover
-   - Combines best elements from parent prompts
-   - Fallback to simple concatenation
+   - Combines best elements from parent prompts using LLM
+   - Strictly LLM-driven (no fallbacks)
 
-4. **LLMGeneticOptimizer**: Main optimization engine
+4. **LLMPopulationGenerator**: LLM-powered population generation
+   - Creates diverse initial populations using LLM
+   - Configurable diversity levels
+
+5. **LLMGeneticOptimizer**: Main optimization engine
    - Genetic algorithm implementation
    - Population management
    - Evolution loop
+   - Progress callbacks for monitoring
 
 
 ## Examples

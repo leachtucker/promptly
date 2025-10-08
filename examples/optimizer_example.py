@@ -6,8 +6,7 @@ import asyncio
 import os
 from promptly import (
     LLMGeneticOptimizer,
-    LLMAccuracyFitnessFunction,
-    LLMSemanticFitnessFunction,
+    LLMComprehensiveFitnessFunction,
     PromptTestCase,
     PromptTemplate,
     PromptRunner,
@@ -23,8 +22,6 @@ async def math_qa_optimization_example():
     # Setup clients
     main_client = OpenAIClient()  # For running prompts
     eval_client = OpenAIClient()  # For evaluation
-    mutation_client = OpenAIClient()  # For mutation
-    crossover_client = OpenAIClient()  # For crossover
     
     runner = PromptRunner(main_client)
     
@@ -65,11 +62,11 @@ async def math_qa_optimization_example():
     
     # Setup optimizer
     optimizer = LLMGeneticOptimizer(
+        eval_model="gpt-4",
         population_size=8,  # Smaller for demo
         generations=3,      # Fewer for demo
-        fitness_function=LLMAccuracyFitnessFunction(eval_client),
-        mutation_client=mutation_client,
-        crossover_client=crossover_client,
+        fitness_function=LLMComprehensiveFitnessFunction(eval_client, "gpt-4"),
+        eval_client=eval_client,
         mutation_rate=0.4,
         crossover_rate=0.6
     )
@@ -81,7 +78,7 @@ async def math_qa_optimization_example():
     print()
     
     # Run optimization
-    result = await optimizer.optimize(base_prompt, test_cases, runner)
+    result = await optimizer.optimize(runner, base_prompt, test_cases)
     
     print("Optimization completed!")
     print(f"Best fitness score: {result.fitness_score:.3f}")
@@ -102,8 +99,6 @@ async def creative_writing_optimization_example():
     # Setup clients
     main_client = AnthropicClient()  # Use Claude for creative tasks
     eval_client = OpenAIClient()     # Use GPT-4 for evaluation
-    mutation_client = OpenAIClient()
-    crossover_client = OpenAIClient()
     
     runner = PromptRunner(main_client)
     
@@ -134,11 +129,11 @@ async def creative_writing_optimization_example():
     
     # Setup optimizer with semantic fitness
     optimizer = LLMGeneticOptimizer(
+        eval_model="gpt-4",
         population_size=6,
         generations=2,
-        fitness_function=LLMSemanticFitnessFunction(eval_client),
-        mutation_client=mutation_client,
-        crossover_client=crossover_client,
+        fitness_function=LLMComprehensiveFitnessFunction(eval_client, "gpt-4"),
+        eval_client=eval_client,
         mutation_rate=0.5,
         crossover_rate=0.8
     )
@@ -149,7 +144,7 @@ async def creative_writing_optimization_example():
     print()
     
     # Run optimization
-    result = await optimizer.optimize(base_prompt, test_cases, runner, model="claude-3-sonnet-20240229")
+    result = await optimizer.optimize(runner, base_prompt, test_cases, model="claude-3-sonnet-20240229")
     
     print("Optimization completed!")
     print(f"Best fitness score: {result.fitness_score:.3f}")
@@ -170,8 +165,6 @@ async def code_generation_optimization_example():
     # Setup clients
     main_client = OpenAIClient()
     eval_client = OpenAIClient()
-    mutation_client = OpenAIClient()
-    crossover_client = OpenAIClient()
     
     runner = PromptRunner(main_client)
     
@@ -202,11 +195,11 @@ async def code_generation_optimization_example():
     
     # Setup optimizer
     optimizer = LLMGeneticOptimizer(
+        eval_model="gpt-4",
         population_size=6,
         generations=2,
-        fitness_function=LLMAccuracyFitnessFunction(eval_client, "gpt-4"),
-        mutation_client=mutation_client,
-        crossover_client=crossover_client,
+        fitness_function=LLMComprehensiveFitnessFunction(eval_client, "gpt-4"),
+        eval_client=eval_client,
         mutation_rate=0.3,
         crossover_rate=0.7
     )
@@ -217,7 +210,7 @@ async def code_generation_optimization_example():
     print()
     
     # Run optimization
-    result = await optimizer.optimize(base_prompt, test_cases, runner, model="gpt-4")
+    result = await optimizer.optimize(runner, base_prompt, test_cases, model="gpt-4")
     
     print("Optimization completed!")
     print(f"Best fitness score: {result.fitness_score:.3f}")

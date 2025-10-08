@@ -351,7 +351,7 @@ def trace(trace_id: Optional[str], optimizer_only: bool, optimization_id: Option
 @click.option("--population-size", default=10, help="Population size for genetic algorithm")
 @click.option("--generations", default=5, help="Number of generations to run")
 @click.option("--model", "-m", default="gpt-3.5-turbo", help="Model to use for prompt execution")
-@click.option("--eval-model", default="gpt-4", help="Model to use for evaluation")
+@click.option("--eval-model", default="gpt-5-mini-2025-08-07", help="Model to use for evaluation")
 @click.option("--provider", default="openai", type=click.Choice(["openai", "anthropic"]), help="LLM provider")
 @click.option("--api-key", help="API key for the provider")
 @click.option("--mutation-rate", default=0.3, help="Mutation rate (0.0-1.0)")
@@ -361,9 +361,7 @@ def trace(trace_id: Optional[str], optimizer_only: bool, optimization_id: Option
 @click.option("--trace-optimizer", is_flag=True, help="Enable tracing of optimizer prompts with separate context", default=False)
 @click.option("--output", "-o", help="Output file to save the optimized prompt")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt and proceed automatically")
-@click.option("--use-llm-population", is_flag=True, default=True, help="Use LLM to generate initial population variations")
 @click.option("--population-diversity", default=0.7, help="Diversity level for LLM population generation (0.0-1.0)")
-@click.option("--pop-gen-model", default="gpt-4", help="Model to use for population generation")
 def optimize(
     base_prompt: str,
     test_cases: str,
@@ -380,11 +378,11 @@ def optimize(
     trace_optimizer: bool,
     output: Optional[str],
     yes: bool,
-    use_llm_population: bool,
     population_diversity: float,
-    pop_gen_model: str,
 ) -> None:
-    """Optimize a prompt using LLM-powered genetic algorithm"""
+    """Optimize a prompt using LLM-powered genetic algorithm (strictly LLM-driven)"""
+
+    print(f"Evaluating model...: {eval_model}")
     
     async def _run_optimization():
         try:
@@ -411,15 +409,9 @@ def optimize(
             if provider == "openai":
                 main_client = OpenAIClient(api_key=api_key)
                 eval_client = OpenAIClient(api_key=api_key)
-                mutation_client = OpenAIClient(api_key=api_key)
-                crossover_client = OpenAIClient(api_key=api_key)
-                population_generator_client = OpenAIClient(api_key=api_key)
             elif provider == "anthropic":
                 main_client = AnthropicClient(api_key=api_key)
                 eval_client = AnthropicClient(api_key=api_key)
-                mutation_client = AnthropicClient(api_key=api_key)
-                crossover_client = AnthropicClient(api_key=api_key)
-                population_generator_client = AnthropicClient(api_key=api_key)
             else:
                 click.echo(f"Unsupported provider: {provider}")
                 return
@@ -435,6 +427,7 @@ def optimize(
 
             # Initialize optimizer (callback will be set later)
             optimizer = LLMGeneticOptimizer(
+                eval_model=eval_model,
                 population_size=population_size,
                 generations=generations,
                 fitness_function=fitness_function,
@@ -442,11 +435,7 @@ def optimize(
                 mutation_rate=mutation_rate,
                 crossover_rate=crossover_rate,
                 elite_size=elite_size,
-                mutation_client=mutation_client,
-                crossover_client=crossover_client,
-                population_generator_client=population_generator_client if use_llm_population else None,
                 eval_client=eval_client,
-                use_llm_population_generation=use_llm_population,
                 population_diversity_level=population_diversity
             )
             
@@ -456,11 +445,8 @@ def optimize(
                 generations=generations,
                 test_cases_count=len(test_cases_list) if test_cases_list else 0,
                 has_test_cases=test_cases_list is not None,
-                mutation_client=mutation_client is not None,
-                crossover_client=crossover_client is not None,
                 mutation_rate=mutation_rate,
-                crossover_rate=crossover_rate,
-                use_llm_population=use_llm_population
+                crossover_rate=crossover_rate
             )
             
             console = Console()
@@ -480,13 +466,8 @@ def optimize(
             
             config_table.add_row("Population Size", f"[bold green]{population_size}[/bold green]")
             config_table.add_row("Generations", f"[bold green]{generations}[/bold green]")
-            
-            llm_pop_status = "[bold green]✅ Enabled[/bold green]" if use_llm_population else "[bold red]❌ Disabled[/bold red]"
-            config_table.add_row("LLM Population Generation", llm_pop_status)
-            
-            if use_llm_population:
-                config_table.add_row("Population Diversity", f"[bold green]{population_diversity}[/bold green]")
-                config_table.add_row("Population Generation Model", f"[bold blue]{pop_gen_model}[/bold blue]")
+            config_table.add_row("LLM-Driven", "[bold green]✅ Strictly LLM-based operations[/bold green]")
+            config_table.add_row("Population Diversity", f"[bold green]{population_diversity}[/bold green]")
             
             if test_cases_list:
                 config_table.add_row("Test Cases", f"[bold green]{len(test_cases_list)}[/bold green]")
@@ -578,7 +559,7 @@ def optimize(
                 optimizer.progress_callback = progress_callback
                 
                 # Start optimization
-                result = await optimizer.optimize(runner, base_template, test_cases_list, model=model)
+                result = await optimizer.optimize(runner, base_template, test_cases_list, model=eval_model)
             
             # Display results with celebration
             console.print()
@@ -602,9 +583,7 @@ def optimize(
             results_table.add_row("⏱️ Optimization Time", f"[bold green]{result.optimization_time:.2f}s[/bold green]")
             results_table.add_row("🔄 Generations", f"[bold green]{result.generation + 1}[/bold green]")
             results_table.add_row("👥 Population Size", f"[bold green]{result.population_size}[/bold green]")
-            
-            if result.metadata.get('llm_population_generation'):
-                results_table.add_row("🧬 LLM Population Gen", "[bold green]✅ Used[/bold green]")
+            results_table.add_row("🤖 LLM-Driven", "[bold green]✅ Strictly LLM-based[/bold green]")
             
             console.print(results_table)
             console.print()
@@ -641,13 +620,10 @@ def _calculate_api_calls(
     generations: int,
     test_cases_count: int,
     has_test_cases: bool,
-    mutation_client: bool,
-    crossover_client: bool,
     mutation_rate: float,
     crossover_rate: float,
-    use_llm_population: bool = False
 ) -> dict:
-    """Calculate estimated API calls for optimization"""
+    """Calculate estimated API calls for optimization (strictly LLM-driven)"""
     
     # Base calculations
     total_evaluations = population_size * generations
@@ -665,22 +641,17 @@ def _calculate_api_calls(
     
     # Mutation calls (based on actual mutation rate)
     mutation_calls = 0
-    if mutation_client:
-        # Each generation, mutation_rate * population_size individuals get mutated
-        mutation_calls = int(generations * population_size * mutation_rate)
+    # Each generation, mutation_rate * population_size individuals get mutated
+    mutation_calls = int(generations * population_size * mutation_rate)
     
     # Crossover calls (based on actual crossover rate)
     crossover_calls = 0
-    if crossover_client:
-        # Each generation, crossover_rate * population_size individuals get crossed over
-        # Each crossover produces 2 offspring, so we need crossover_rate * population_size / 2 crossover operations
-        crossover_calls = int(generations * population_size * crossover_rate * 0.5)
+    # Each generation, crossover_rate * population_size individuals get crossed over
+    # Each crossover produces 2 offspring, so we need crossover_rate * population_size / 2 crossover operations
+    crossover_calls = int(generations * population_size * crossover_rate * 0.5)
     
-    # Population generation calls (only once at the beginning)
-    population_generation_calls = 0
-    if use_llm_population:
-        # One call to generate the initial population (minus the original prompt)
-        population_generation_calls = 1
+    # Population generation calls (always uses LLM - one call at the beginning)
+    population_generation_calls = 1
     
     total_calls = evaluation_calls + execution_calls + mutation_calls + crossover_calls + population_generation_calls
     

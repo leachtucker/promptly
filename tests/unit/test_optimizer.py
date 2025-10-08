@@ -3,7 +3,6 @@ Tests for optimizer module
 """
 
 import pytest
-from unittest.mock import AsyncMock
 from typing import Optional, List
 from promptly.core.optimizer import (
     LLMGeneticOptimizer,
@@ -109,13 +108,13 @@ class TestLLMComprehensiveFitnessFunction:
     """Test LLM comprehensive fitness function"""
     
     @pytest.mark.asyncio
-    async def test_evaluate_with_mock_client(self):
+    async def test_evaluate_with_mock_client(self, tracer_with_temp_db):
         """Test fitness evaluation with mock client"""
         mock_client = MockLLMClient(structured_responses=[
             {"score": 0.8, "reasoning": "The prompt performs well on most test cases."}
         ])
         
-        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client, "gpt-4")
         
         prompt = PromptTemplate(template="Answer: {{question}}", name="test")
         test_cases = [
@@ -123,15 +122,11 @@ class TestLLMComprehensiveFitnessFunction:
             PromptTestCase(input_variables={"question": "3+3"}, expected_output="6"),
         ]
         
-        # Mock the runner
-        mock_runner = AsyncMock()
-        mock_runner.run.return_value = LLMResponse(
-            content="4",
-            model="test-model",
-            usage=UsageData()
-        )
+        # Create proper mock runner with tracer
+        from promptly.core.runner import PromptRunner
+        mock_runner = PromptRunner(client=mock_client, tracer=tracer_with_temp_db)
         
-        result = await fitness_function.evaluate(mock_runner, prompt, test_cases)
+        result = await fitness_function.evaluate(runner=mock_runner, prompt=prompt, model="gpt-4", test_cases=test_cases)
         
         assert isinstance(result, FitnessEvaluation)
         assert result.score == 0.8
@@ -139,26 +134,22 @@ class TestLLMComprehensiveFitnessFunction:
         assert len(result.test_results) == 2
     
     @pytest.mark.asyncio
-    async def test_evaluate_without_test_cases(self):
+    async def test_evaluate_without_test_cases(self, tracer_with_temp_db):
         """Test fitness evaluation without test cases - evaluates prompt quality directly"""
         # Mock client returns quality-based evaluation
         mock_client = MockLLMClient(structured_responses=[
             {"score": 0.75, "reasoning": "The prompt is clear and well-structured."}
         ])
         
-        # Mock runner needed for quality evaluation
-        mock_runner = AsyncMock()
-        mock_runner.run.return_value = LLMResponse(
-            content="Sample output from the prompt",
-            model="test-model",
-            usage=UsageData()
-        )
+        # Create proper mock runner with tracer
+        from promptly.core.runner import PromptRunner
+        mock_runner = PromptRunner(client=mock_client, tracer=tracer_with_temp_db)
         
-        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
-        prompt = PromptTemplate(template="Answer: {{question}}", name="test")
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client, "gpt-4")
+        prompt = PromptTemplate(template="Write a helpful and informative response.", name="test")
         
         # When no test cases provided, evaluates based on prompt quality
-        result = await fitness_function.evaluate(mock_runner, prompt, test_cases=None)
+        result = await fitness_function.evaluate(runner=mock_runner, prompt=prompt, model="gpt-4", test_cases=None)
         
         assert isinstance(result, FitnessEvaluation)
         assert result.score == 0.75
@@ -177,7 +168,7 @@ class TestLLMPromptMutator:
             {"mutated_prompt": "Improved prompt template with better instructions."}
         ])
         
-        mutator = LLMPromptMutator(mock_client)
+        mutator = LLMPromptMutator(mock_client, "gpt-4")
         prompt = PromptTemplate(template="Original prompt", name="test")
         
         result = await mutator.mutate(prompt, mutation_type="improve_clarity")
@@ -185,34 +176,6 @@ class TestLLMPromptMutator:
         assert isinstance(result, PromptTemplate)
         assert result.template == "Improved prompt template with better instructions."
         assert result.name == "test_mutated"
-    
-    @pytest.mark.asyncio
-    async def test_mutate_fallback(self):
-        """Test mutation fallback when LLM fails"""
-        # Mock client that raises an exception
-        mock_client = AsyncMock()
-        mock_client.generate_structured.side_effect = Exception("API error")
-        
-        mutator = LLMPromptMutator(mock_client)
-        prompt = PromptTemplate(template="Original prompt", name="test")
-        
-        result = await mutator.mutate(prompt)
-        
-        assert isinstance(result, PromptTemplate)
-        assert result.name == "test_simple_mutated"
-        # Should contain some variation of the original (case insensitive)
-        assert "original prompt" in result.template.lower()
-    
-    def test_simple_mutation(self):
-        """Test simple mutation fallback"""
-        mutator = LLMPromptMutator(MockLLMClient())
-        prompt = PromptTemplate(template="Original prompt", name="test")
-        
-        result = mutator._simple_mutation(prompt)
-        
-        assert isinstance(result, PromptTemplate)
-        assert result.name == "test_simple_mutated"
-        assert len(result.template) > len(prompt.template)
 
 
 class TestLLMPromptCrossover:
@@ -225,7 +188,7 @@ class TestLLMPromptCrossover:
             {"offspring1": "Combined prompt 1", "offspring2": "Combined prompt 2"}
         ])
         
-        crossover = LLMPromptCrossover(mock_client)
+        crossover = LLMPromptCrossover(mock_client, "gpt-4")
         parent1 = PromptTemplate(template="Parent 1", name="p1")
         parent2 = PromptTemplate(template="Parent 2", name="p2")
         
@@ -243,52 +206,61 @@ class TestLLMGeneticOptimizer:
     def test_optimizer_initialization(self):
         """Test optimizer initialization"""
         mock_client = MockLLMClient()
-        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client, "gpt-4")
         
         optimizer = LLMGeneticOptimizer(
+            eval_model="gpt-4",
             population_size=5,
             generations=3,
             fitness_function=fitness_function,
-            mutation_client=mock_client,
-            crossover_client=mock_client
+            eval_client=mock_client,
         )
         
         assert optimizer.population_size == 5
         assert optimizer.generations == 3
         assert optimizer.fitness_function == fitness_function
-        assert optimizer.mutation_client == mock_client
-        assert optimizer.crossover_client == mock_client
     
-    def test_initialize_population(self):
-        """Test population initialization"""
-        mock_client = MockLLMClient()
-        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
+    @pytest.mark.asyncio
+    async def test_initialize_population(self):
+        """Test population initialization (LLM-driven)"""
+        # Mock successful structured response
+        mock_client = MockLLMClient(structured_responses=[
+            {
+                "variations": [
+                    "Variation 1",
+                    "Variation 2",
+                    "Variation 3",
+                    "Variation 4"
+                ]
+            }
+        ])
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client, "gpt-4")
         
         optimizer = LLMGeneticOptimizer(
+            eval_model="gpt-4",
             population_size=5,
             generations=3,
-            fitness_function=fitness_function
+            fitness_function=fitness_function,
+            eval_client=mock_client
         )
         
         base_prompt = PromptTemplate(template="Base prompt", name="base")
-        # Use the simple initialization method for this test
-        optimizer._initialize_population_simple(base_prompt)
+        await optimizer._initialize_population(base_prompt)
         
         assert len(optimizer.population) == 5
         assert optimizer.population[0].template == "Base prompt"
-        # Other prompts should be variations
-        for i in range(1, 5):
-            assert optimizer.population[i].name.startswith("base_var_")
     
     def test_tournament_selection(self):
         """Test tournament selection"""
         mock_client = MockLLMClient()
-        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client, "gpt-4")
         
         optimizer = LLMGeneticOptimizer(
+            eval_model="gpt-4",
             population_size=5,
             generations=3,
-            fitness_function=fitness_function
+            fitness_function=fitness_function,
+            eval_client=mock_client,
         )
         
         # Create mock evaluations with different scores
@@ -326,28 +298,41 @@ class TestLLMGeneticOptimizer:
         assert avg_score > 0.5  # Should be higher than the average of all scores
     
     @pytest.mark.asyncio
-    async def test_optimize_mock_run(self):
+    async def test_optimize_mock_run(self, tracer_with_temp_db):
         """Test optimization with mocked components"""
         # Mock clients with predictable responses
+        # Need to provide:
+        # 1. Population generation (1 call)
+        # 2. Fitness evaluations (population_size * generations = 3 * 2 = 6 calls)
         mock_eval_client = MockLLMClient(structured_responses=[
+            # 1. Population generation - create 2 variations (plus base = 3 total)
+            {
+                "variations": [
+                    "Please answer: {{question}}",
+                    "Response to {{question}}"
+                ]
+            },
+            # 2. Generation 1 evaluations (3 individuals)
+            {"score": 0.7, "reasoning": "Decent performance."},
             {"score": 0.8, "reasoning": "Good performance."},
+            {"score": 0.75, "reasoning": "Fair performance."},
+            # 3. Generation 2 evaluations (3 individuals)
+            {"score": 0.85, "reasoning": "Very good performance."},
             {"score": 0.9, "reasoning": "Excellent performance."},
-        ])
-        mock_mutation_client = MockLLMClient(structured_responses=[
-            {"mutated_prompt": "Improved prompt"}
-        ])
-        mock_crossover_client = MockLLMClient(structured_responses=[
-            {"offspring1": "Combined 1", "offspring2": "Combined 2"}
+            {"score": 0.88, "reasoning": "Strong performance."},
         ])
         
-        fitness_function = LLMComprehensiveFitnessFunction(mock_eval_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_eval_client, "gpt-4")
         
         optimizer = LLMGeneticOptimizer(
+            eval_model="gpt-4",
             population_size=3,
             generations=2,
             fitness_function=fitness_function,
-            mutation_client=mock_mutation_client,
-            crossover_client=mock_crossover_client
+            eval_client=mock_eval_client,
+            tracer=tracer_with_temp_db,
+            mutation_rate=0.0,  # Disable for predictable test
+            crossover_rate=0.0,  # Disable for predictable test
         )
         
         base_prompt = PromptTemplate(template="Answer: {{question}}", name="base")
@@ -355,15 +340,11 @@ class TestLLMGeneticOptimizer:
             PromptTestCase(input_variables={"question": "2+2"}, expected_output="4"),
         ]
         
-        # Mock runner
-        mock_runner = AsyncMock()
-        mock_runner.run.return_value = LLMResponse(
-            content="4",
-            model="test-model",
-            usage=UsageData()
-        )
+        # Create proper mock runner with tracer
+        from promptly.core.runner import PromptRunner
+        mock_runner = PromptRunner(client=mock_eval_client, tracer=tracer_with_temp_db)
         
-        result = await optimizer.optimize(mock_runner, base_prompt, test_cases)
+        result = await optimizer.optimize(mock_runner, base_prompt, test_cases, model="gpt-4")
         
         assert isinstance(result, OptimizationResult)
         assert result.best_prompt is not None
@@ -376,36 +357,45 @@ class TestLLMGeneticOptimizer:
     async def test_optimize_without_test_cases(self):
         """Test optimization without test cases - evaluates based on prompt quality"""
         # When no test cases provided, quality-based evaluation is used
-        # Provide enough responses for multiple generations of evaluations
+        # Need to provide responses for:
+        # 1. Population generation (1 call)
+        # 2. Fitness evaluations (population_size * generations = 3 * 2 = 6 calls)
+        # 3. Crossover operations (may happen in generation 2)
+        # 4. Mutation operations (may happen in generation 2)
+        
         mock_eval_client = MockLLMClient(structured_responses=[
+            # 1. Population generation - create 2 variations (plus base = 3 total)
+            {
+                "variations": [
+                    "Write a helpful and clear response.",
+                    "Provide an informative and useful answer."
+                ]
+            },
+            # 2. Generation 1 evaluations (3 individuals)
             {"score": 0.6, "reasoning": "Decent prompt quality."},
             {"score": 0.75, "reasoning": "Good prompt quality."},
+            {"score": 0.65, "reasoning": "Acceptable prompt quality."},
+            # 3. Crossover for generation 2
+            {"offspring1": "Write helpful responses clearly.", "offspring2": "Provide clear and useful information."},
+            # 4. Mutation for generation 2 (may or may not happen depending on rate)
+            {"mutated_prompt": "Write exceptionally helpful and informative responses with clarity."},
+            # 5. Generation 2 evaluations (3 individuals)
             {"score": 0.85, "reasoning": "Very good prompt quality."},
-            {"score": 0.8, "reasoning": "Good quality with clear structure."},
             {"score": 0.9, "reasoning": "Excellent prompt quality."},
             {"score": 0.88, "reasoning": "High quality prompt."},
-            {"score": 0.82, "reasoning": "Strong prompt design."},
-            {"score": 0.78, "reasoning": "Well-structured prompt."},
-        ])
-        mock_mutation_client = MockLLMClient(structured_responses=[
-            {"mutated_prompt": "Write a clear and comprehensive response with helpful details."},
-            {"mutated_prompt": "Provide a well-structured and informative answer."},
-            {"mutated_prompt": "Create an engaging and detailed response."},
-        ])
-        mock_crossover_client = MockLLMClient(structured_responses=[
-            {"offspring1": "Write a thorough and helpful response.", "offspring2": "Provide clear and detailed information."},
-            {"offspring1": "Create a well-organized answer.", "offspring2": "Write an informative explanation."},
         ])
         
-        fitness_function = LLMComprehensiveFitnessFunction(mock_eval_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_eval_client, "gpt-4")
         
-        # Create optimizer
+        # Create optimizer with controlled rates to ensure predictable behavior
         optimizer = LLMGeneticOptimizer(
+            eval_model="gpt-4",
             population_size=3,
             generations=2,
             fitness_function=fitness_function,
-            mutation_client=mock_mutation_client,
-            crossover_client=mock_crossover_client,
+            eval_client=mock_eval_client,
+            mutation_rate=0.0,  # Disable mutation for predictable test
+            crossover_rate=0.0,  # Disable crossover for predictable test
         )
         
         # Use a template without variables since quality evaluation doesn't provide test inputs
@@ -415,7 +405,7 @@ class TestLLMGeneticOptimizer:
         from promptly.core.runner import PromptRunner
         mock_runner = PromptRunner(client=mock_eval_client)
         
-        result = await optimizer.optimize(mock_runner, base_prompt, test_cases=None)
+        result = await optimizer.optimize(mock_runner, base_prompt, test_cases=None, model="gpt-4")
         
         assert isinstance(result, OptimizationResult)
         assert result.best_prompt is not None
@@ -559,45 +549,26 @@ class TestLLMGeneticOptimizerWithPopulationGeneration:
     """Test LLMGeneticOptimizer with LLM population generation"""
     
     @pytest.mark.asyncio
-    async def test_optimizer_with_llm_population_generation(self):
-        """Test optimizer initialization with LLM population generation"""
+    async def test_optimizer_initialization(self):
+        """Test optimizer initialization (strictly LLM-driven)"""
         mock_client = MockLLMClient()
-        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client, "gpt-4")
         
         optimizer = LLMGeneticOptimizer(
+            eval_model="gpt-4",
             population_size=5,
             generations=2,
             fitness_function=fitness_function,
-            population_generator_client=mock_client,
-            use_llm_population_generation=True,
+            eval_client=mock_client,
             population_diversity_level=0.8
         )
         
-        assert optimizer.use_llm_population_generation is True
         assert optimizer.population_diversity_level == 0.8
         assert optimizer.population_generator is not None
-        assert optimizer.population_generator_client == mock_client
-    
-    @pytest.mark.asyncio
-    async def test_optimizer_without_llm_population_generation(self):
-        """Test optimizer initialization without LLM population generation"""
-        mock_client = MockLLMClient()
-        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
-        
-        optimizer = LLMGeneticOptimizer(
-            population_size=5,
-            generations=2,
-            fitness_function=fitness_function,
-            use_llm_population_generation=False
-        )
-        
-        assert optimizer.use_llm_population_generation is False
-        assert optimizer.population_generator is None
-        assert optimizer.population_generator_client is None
     
     @pytest.mark.asyncio
     async def test_initialize_population_with_llm(self):
-        """Test population initialization using LLM"""
+        """Test population initialization using LLM (strictly LLM-driven)"""
         # Mock successful structured response
         mock_client = MockLLMClient(structured_responses=[
             {
@@ -608,14 +579,14 @@ class TestLLMGeneticOptimizerWithPopulationGeneration:
                 ]
             }
         ])
-        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
+        fitness_function = LLMComprehensiveFitnessFunction(mock_client, "gpt-4")
         
         optimizer = LLMGeneticOptimizer(
+            eval_model="gpt-4",
             population_size=4,
             generations=2,
             fitness_function=fitness_function,
-            population_generator_client=mock_client,
-            use_llm_population_generation=True
+            eval_client=mock_client 
         )
         
         base_prompt = PromptTemplate(
@@ -628,27 +599,3 @@ class TestLLMGeneticOptimizerWithPopulationGeneration:
         assert len(optimizer.population) == 4
         assert optimizer.population[0].template == "Answer this: {{question}}"
         assert optimizer.population[1].name.startswith("test_prompt_llm_var_")
-    
-    @pytest.mark.asyncio
-    async def test_initialize_population_simple_when_disabled(self):
-        """Test simple population initialization when LLM generation is disabled"""
-        mock_client = MockLLMClient()
-        fitness_function = LLMComprehensiveFitnessFunction(mock_client)
-        
-        optimizer = LLMGeneticOptimizer(
-            population_size=4,
-            generations=2,
-            fitness_function=fitness_function,
-            use_llm_population_generation=False
-        )
-        
-        base_prompt = PromptTemplate(
-            template="Answer this: {{question}}",
-            name="test_prompt"
-        )
-        
-        await optimizer._initialize_population(base_prompt)
-        
-        assert len(optimizer.population) == 4
-        assert optimizer.population[0].template == "Answer this: {{question}}"
-        assert optimizer.population[1].name.startswith("test_prompt_var_")

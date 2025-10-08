@@ -12,9 +12,11 @@ from datetime import datetime
 from pydantic import BaseModel, Field, ValidationError
 
 from .templates import PromptTemplate
-from .clients import BaseLLMClient, OpenAIClient
+from .clients import BaseLLMClient, OpenAIClient, AnthropicClient
 from .runner import PromptRunner
 from .tracer import Tracer
+from .utils.ai import simple_schema
+
 import uuid
 
 
@@ -99,13 +101,7 @@ class EvaluationResponse(BaseModel):
 class QualityEvaluationResponse(BaseModel):
     """Structured response for prompt quality evaluation"""
     score: float = Field(description="Score from 0.0 to 1.0 where 1.0 is excellent")
-    reasoning: str = Field(description="Detailed explanation of the quality evaluation")
-
-
-class SimilarityEvaluationResponse(BaseModel):
-    """Structured response for semantic similarity evaluation"""
-    score: float = Field(description="Similarity score from 0.0 to 1.0")
-    reasoning: str = Field(description="Detailed explanation of the similarity evaluation")
+    reasoning: str = Field(description="Detailed explanation of the quality evaluation",)
 
 
 class MutationResponse(BaseModel):
@@ -127,17 +123,19 @@ class CrossoverResponse(BaseModel):
 class LLMFitnessFunction(ABC):
     """Abstract base class for LLM-powered fitness functions"""
     
-    def __init__(self, evaluation_client: BaseLLMClient, evaluation_model: str = "gpt-4"):
+    def __init__(self, evaluation_client: BaseLLMClient, evaluation_model: str):
         self.evaluation_client = evaluation_client
         self.evaluation_model = evaluation_model
     
     @abstractmethod
     async def evaluate(
         self, 
+        *,
         runner: PromptRunner,
         prompt: PromptTemplate, 
+        model: str = "gpt-4",
         test_cases: Optional[List[PromptTestCase]] = None,
-        **kwargs: Any
+        variables: Optional[Dict[str, Any]] = None,
     ) -> FitnessEvaluation:
         """Evaluate fitness of a prompt using LLM"""
         pass
@@ -146,18 +144,19 @@ class LLMFitnessFunction(ABC):
 class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
     """Comprehensive LLM-powered fitness function combining accuracy and semantic evaluation"""
     
-    def __init__(self, evaluation_client: BaseLLMClient, evaluation_model: str = "gpt-4"):
+    def __init__(self, evaluation_client: BaseLLMClient, evaluation_model: str):
         super().__init__(evaluation_client, evaluation_model)
         self.accuracy_weight = 0.6  # Weight for accuracy evaluation
         self.semantic_weight = 0.4  # Weight for semantic evaluation
     
     async def evaluate(
         self,
+        *,
         runner: PromptRunner,
         prompt: PromptTemplate,
+        model: str,
         test_cases: Optional[List[PromptTestCase]] = None,
-        model: str = "gpt-3.5-turbo",
-        **kwargs: Any
+        variables: Optional[Dict[str, Any]] = None,
     ) -> FitnessEvaluation:
         """Evaluate prompt using comprehensive accuracy and semantic analysis"""
 
@@ -165,8 +164,7 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
             output = await runner.run(
                 model=model,
                 prompt=prompt,
-                variables={},
-                **kwargs
+                variables=variables,
             )
             output = output.content
             
@@ -180,7 +178,6 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
                     model=model,
                     prompt=prompt,
                     variables=test_case.input_variables,
-                    **kwargs
                 )
                 test_results.append({
                     "input": test_case.input_variables,
@@ -205,7 +202,7 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
                 prompt=evaluation_prompt,
                 model=self.evaluation_model,
                 temperature=0.3,  # Low temperature for consistent evaluation
-                max_tokens=800
+                max_completion_tokens=800
             )
 
             evaluation_response = EvaluationResponse.model_validate_json(response.content)
@@ -280,6 +277,15 @@ Please provide:
 1. A comprehensive score from 0.0 to 1.0 (where 1.0 is perfect)
 2. Detailed reasoning covering accuracy, semantic similarity, and overall assessment
 
+RESPONSE:
+- ONLY VALID JSON matching the JSON SCHEMA
+- NO OTHER TEXT
+
+==========
+JSON SCHEMA:
+{simple_schema(EvaluationResponse)}
+==========
+
 ==========
 PROMPT TEMPLATE TO EVALUATE:
 {prompt.template}
@@ -289,9 +295,6 @@ PROMPT TEMPLATE TO EVALUATE:
 TEST RESULTS:
 {json.dumps(test_results, indent=2)}
 ==========
-
-Please respond with valid JSON matching this schema:
-{EvaluationResponse.model_json_schema()}
 """
     
     async def _evaluate_prompt_quality(self, prompt: PromptTemplate, output: str) -> FitnessEvaluation:
@@ -303,8 +306,8 @@ Please respond with valid JSON matching this schema:
             response = await self.evaluation_client.generate(
                 prompt=quality_prompt,
                 model=self.evaluation_model,
-                temperature=0.3,
-                max_tokens=500
+                # temperature=0.3,
+                max_completion_tokens=500
             )
             
             evaluation_response = QualityEvaluationResponse.model_validate_json(response.content)
@@ -325,6 +328,7 @@ Please respond with valid JSON matching this schema:
     
     def _create_quality_evaluation_prompt(self, prompt: PromptTemplate, output: str) -> str:
         """Create quality evaluation prompt for the LLM"""
+
         return f"""
 You are an expert prompt engineer. Your task is to evaluate the quality of this prompt template using comprehensive criteria.
 
@@ -366,6 +370,15 @@ Please provide:
 2. Detailed reasoning covering all evaluation criteria
 
 ==========
+RESPONSE:
+- ONLY VALID JSON matching the JSON SCHEMA
+- NO OTHER TEXT
+
+JSON SCHEMA: 
+{simple_schema(QualityEvaluationResponse)}
+==========
+
+==========
 PROMPT TEMPLATE TO EVALUATE:
 {prompt.template}
 ==========
@@ -373,16 +386,13 @@ PROMPT TEMPLATE TO EVALUATE:
 ==========
 OUTPUT TO EVALUATE:
 {output}
-
-Please respond with valid JSON matching this schema:
-{QualityEvaluationResponse.model_json_schema()}
+==========
 """
-
 
 class LLMPromptMutator:
     """LLM-powered prompt mutation"""
     
-    def __init__(self, mutation_client: BaseLLMClient, mutation_model: str = "gpt-4"):
+    def __init__(self, mutation_client: BaseLLMClient, mutation_model: str):
         self.mutation_client = mutation_client
         self.mutation_model = mutation_model
     
@@ -400,8 +410,8 @@ class LLMPromptMutator:
             response = await self.mutation_client.generate(
                 prompt=mutation_prompt,
                 model=self.mutation_model,
-                temperature=0.7 + mutation_strength * 0.3,  # Higher temp for more creativity
-                max_tokens=1000
+                # temperature=0.7 + mutation_strength * 0.3,  # Higher temp for more creativity
+                max_completion_tokens=1000
             )
             
             mutation_response = MutationResponse.model_validate_json(response.content)
@@ -414,12 +424,10 @@ class LLMPromptMutator:
                 metadata=prompt.metadata
             )
             
-        except (ValidationError, json.JSONDecodeError) as _:
-            # Fallback to simple mutation if JSON parsing fails
-            return self._simple_mutation(prompt)
-        except Exception:
-            # Fallback to simple mutation
-            return self._simple_mutation(prompt)
+        except (ValidationError, json.JSONDecodeError) as e:
+            raise ValueError(f"Failed to parse mutation response from LLM: {str(e)}") from e
+        except Exception as e:
+            raise ValueError(f"LLM mutation failed: {str(e)}") from e
     
     def _create_mutation_prompt(self, prompt: PromptTemplate, mutation_type: str, strength: float) -> str:
         """Create mutation instruction prompt"""
@@ -452,30 +460,13 @@ IMPORTANT CONSTRAINTS:
 3. Only improve the prompt, don't change its fundamental nature
 4. The output should be a complete, usable prompt template
 
-Please respond with valid JSON matching this schema:
-{MutationResponse.model_json_schema()}
+RESPONSE:
+- ONLY VALID JSON matching the JSON SCHEMA
+- NO OTHER TEXT
+
+JSON SCHEMA:
+{simple_schema(MutationResponse)}
 """
-    
-    
-    def _simple_mutation(self, prompt: PromptTemplate) -> PromptTemplate:
-        """Fallback simple mutation"""
-        template = prompt.template
-        
-        # Simple text-based mutations as fallback
-        mutations = [
-            f"{template}\n\nBe precise and clear in your response.",
-            f"Please {template.lower()}",
-            f"{template}\n\nProvide specific details.",
-            f"Task: {template}",
-        ]
-        
-        mutated_template = random.choice(mutations)
-        
-        return PromptTemplate(
-            template=mutated_template,
-            name=f"{prompt.name}_simple_mutated",
-            metadata=prompt.metadata
-        )
 
 
 class LLMPopulationGenerator:
@@ -499,8 +490,8 @@ class LLMPopulationGenerator:
             response = await self.generation_client.generate(
                 prompt=generation_prompt,
                 model=self.generation_model,
-                temperature=0.7 + diversity_level * 0.3,
-                max_tokens=2000
+                # temperature=0.7 + diversity_level * 0.3,
+                max_completion_tokens=2000
             )
             
             generation_response = PopulationGenerationResponse.model_validate_json(response.content)
@@ -512,9 +503,9 @@ class LLMPopulationGenerator:
             return population[:population_size]
             
         except (ValidationError, json.JSONDecodeError) as e:
-            raise ValueError("Failed to parse population generation response") from e
+            raise ValueError(f"Failed to parse population generation response from LLM: {str(e)}") from e
         except Exception as e:
-            raise ValueError("Failed to generate population") from e
+            raise ValueError(f"LLM population generation failed: {str(e)}") from e
     
     def _create_generation_prompt(self, base_prompt: PromptTemplate, num_variations: int, diversity_level: float) -> str:
         """Create prompt for LLM population generation"""
@@ -542,8 +533,12 @@ CONSTRAINTS:
 - Make each variation distinct and valuable
 - Ensure all variations can handle the same inputs and produce similar outputs
 
-Please respond with valid JSON matching this schema:
-{PopulationGenerationResponse.model_json_schema()}
+RESPONSE:
+- ONLY VALID JSON matching the JSON SCHEMA
+- NO OTHER TEXT
+
+JSON SCHEMA:
+{simple_schema(PopulationGenerationResponse)}
 """
     
     
@@ -566,7 +561,7 @@ Please respond with valid JSON matching this schema:
 class LLMPromptCrossover:
     """LLM-powered prompt crossover"""
     
-    def __init__(self, crossover_client: BaseLLMClient, crossover_model: str = "gpt-4"):
+    def __init__(self, crossover_client: BaseLLMClient, crossover_model: str):
         self.crossover_client = crossover_client
         self.crossover_model = crossover_model
     
@@ -583,8 +578,8 @@ class LLMPromptCrossover:
             response = await self.crossover_client.generate(
                 prompt=crossover_prompt,
                 model=self.crossover_model,
-                temperature=0.6,
-                max_tokens=1500
+                # temperature=0.6,
+                max_completion_tokens=1500
             )
             
             crossover_response = CrossoverResponse.model_validate_json(response.content)
@@ -604,12 +599,10 @@ class LLMPromptCrossover:
                     metadata=parent2.metadata
                 )
             )
-        except (ValidationError, json.JSONDecodeError) as _:
-            # Fallback to simple crossover if JSON parsing fails
-            return self._simple_crossover(parent1, parent2)
-        except Exception as _:
-            # Fallback to simple crossover
-            return self._simple_crossover(parent1, parent2)
+        except (ValidationError, json.JSONDecodeError) as e:
+            raise ValueError(f"Failed to parse crossover response from LLM: {str(e)}") from e
+        except Exception as e:
+            raise ValueError(f"LLM crossover failed: {str(e)}") from e
             
     
     def _create_crossover_prompt(self, parent1: PromptTemplate, parent2: PromptTemplate) -> str:
@@ -630,31 +623,13 @@ INSTRUCTIONS:
 4. Make each offspring unique and innovative
 5. Ensure both offspring maintain the core functionality
 
-Please respond with valid JSON matching this schema:
-{CrossoverResponse.model_json_schema()}
+RESPONSE:
+- ONLY VALID JSON matching the JSON SCHEMA
+- NO OTHER TEXT
+
+JSON SCHEMA:
+{simple_schema(CrossoverResponse)}
 """
-    
-    def _simple_crossover(self, parent1: PromptTemplate, parent2: PromptTemplate) -> Tuple[PromptTemplate, PromptTemplate]:
-        """Simple crossover as fallback when LLM crossover fails"""
-        # Simple approach: combine parts of both prompts
-        template1 = f"{parent1.template}\n\nAdditional context: {parent2.template}"
-        template2 = f"{parent2.template}\n\nAdditional context: {parent1.template}"
-        
-        return (
-            PromptTemplate(
-                template=template1,
-                name=f"{parent1.name}_simple_offspring1",
-                metadata=parent1.metadata
-            ),
-            PromptTemplate(
-                template=template2,
-                name=f"{parent2.name}_simple_offspring2",
-                metadata=parent2.metadata
-            )
-        )
-    
-
-
 
 class OptimizerPromptRunner(PromptRunner):
     """PromptRunner with optimizer context tracking"""
@@ -705,57 +680,36 @@ class LLMGeneticOptimizer:
     
     def __init__(
         self,
+        eval_model: str,
         population_size: int = 20,
         generations: int = 10,
         fitness_function: Optional[LLMFitnessFunction] = None,
         mutation_rate: float = 0.3,
         crossover_rate: float = 0.7,
         elite_size: int = 2,
-        mutation_client: Optional[BaseLLMClient] = None,
-        crossover_client: Optional[BaseLLMClient] = None,
-        population_generator_client: Optional[BaseLLMClient] = None,
         eval_client: Optional[BaseLLMClient] = None,
         tracer: Optional[Tracer] = None,
-        use_llm_population_generation: bool = True,
         population_diversity_level: float = 0.7,
         progress_callback: Optional[ProgressCallback] = None,
-        **kwargs: Any
     ):
         self.eval_client = eval_client or OpenAIClient()
 
         self.population_size = population_size
         self.generations = generations
-        self.fitness_function = fitness_function or LLMComprehensiveFitnessFunction(self.eval_client)
+        self.fitness_function = fitness_function or LLMComprehensiveFitnessFunction(self.eval_client, eval_model)
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
         self.elite_size = elite_size
         self.tracer = tracer or Tracer()
         self.progress_callback = progress_callback or NoOpProgressCallback()
         
-        # LLM clients for mutation, crossover, and population generation
-        self.mutation_client = mutation_client
-        self.crossover_client = crossover_client
-        self.population_generator_client = population_generator_client
-        
         # Population generation settings
-        self.use_llm_population_generation = use_llm_population_generation
         self.population_diversity_level = population_diversity_level
         
-        # Initialize mutators, crossovers, and population generator
-        if self.mutation_client:
-            self.mutator = LLMPromptMutator(self.mutation_client)
-        else:
-            self.mutator = None
-            
-        if self.crossover_client:
-            self.crossover = LLMPromptCrossover(self.crossover_client)
-        else:
-            self.crossover = None
-        
-        if self.population_generator_client and self.use_llm_population_generation:
-            self.population_generator = LLMPopulationGenerator(self.population_generator_client)
-        else:
-            self.population_generator = None
+        # Initialize mutators, crossovers, and population generator (all LLM-driven)
+        self.mutator = LLMPromptMutator(self.eval_client, eval_model)
+        self.crossover = LLMPromptCrossover(self.eval_client, eval_model)
+        self.population_generator = LLMPopulationGenerator(self.eval_client, eval_model)
         
         # Internal state
         self.current_generation = 0
@@ -769,9 +723,19 @@ class LLMGeneticOptimizer:
         runner: PromptRunner,
         base_prompt: PromptTemplate,
         test_cases: Optional[List[PromptTestCase]] = None,
-        **kwargs: Any
+        variables: Optional[Dict[str, Any]] = None,
+        model: Optional[str] = None,
     ) -> OptimizationResult:
         """Run the LLM-powered genetic optimization process"""
+
+        # Set default model if not provided
+        if not model:
+            if isinstance(runner.client, OpenAIClient):
+                model = "gpt-5-mini-2025-08-07"
+            elif isinstance(runner.client, AnthropicClient):
+                model = "claude-3-5-haiku-latest"
+            else:
+                raise ValueError("No model provided and no default model found")
         
         start_time = datetime.now()
         total_evaluations = 0
@@ -810,7 +774,10 @@ class LLMGeneticOptimizer:
             
             # Evaluate fitness for all individuals using LLM
             evaluations = await self._evaluate_population(
-                test_cases, runner, **kwargs
+                test_cases=test_cases,
+                runner=runner,
+                model=model,
+                variables=variables,
             )
             total_evaluations += len(evaluations)
             
@@ -847,7 +814,6 @@ class LLMGeneticOptimizer:
                 "crossover_rate": self.crossover_rate,
                 "elite_size": self.elite_size,
                 "llm_powered": True,
-                "llm_population_generation": self.use_llm_population_generation and self.population_generator is not None,
                 "population_diversity_level": self.population_diversity_level
             }
         )
@@ -856,63 +822,20 @@ class LLMGeneticOptimizer:
         return result
     
     async def _initialize_population(self, base_prompt: PromptTemplate) -> None:
-        """Initialize population with LLM-generated or simple variations of the base prompt"""
-        if self.population_generator:
-            try:
-                self.population = await self.population_generator.generate_initial_population(
-                    base_prompt, 
-                    self.population_size,
-                    self.population_diversity_level
-                )
-                return
-            except Exception:
-                # Fallback to simple variations on error
-                pass
-        
-        # Fallback to simple variations
-        self._initialize_population_simple(base_prompt)
-    
-    def _initialize_population_simple(self, base_prompt: PromptTemplate) -> None:
-        """Initialize population with simple rule-based variations"""
-        self.population = []
-        
-        # Add the original prompt
-        self.population.append(base_prompt)
-        
-        # Create variations for the rest of the population
-        for i in range(self.population_size - 1):
-            # Simple variations as initial population
-            variation = self._create_simple_variation(base_prompt, i)
-            self.population.append(variation)
-    
-    def _create_simple_variation(self, base_prompt: PromptTemplate, index: int) -> PromptTemplate:
-        """Create simple variations of the base prompt"""
-        template = base_prompt.template
-        
-        # Add different prefixes/suffixes
-        variations = [
-            f"Please {template.lower()}",
-            f"Task: {template}",
-            f"{template}\n\nBe precise and clear.",
-            f"{template}\n\nProvide specific details.",
-            f"{template}\n\nThink step by step.",
-            f"Answer the following: {template}",
-            f"{template}\n\nUse examples when helpful.",
-        ]
-        
-        variation_template = variations[index % len(variations)]
-        
-        return PromptTemplate(
-            template=variation_template,
-            name=f"{base_prompt.name}_var_{index}",
-            metadata=base_prompt.metadata
+        """Initialize population with LLM-generated variations of the base prompt"""
+        self.population = await self.population_generator.generate_initial_population(
+            base_prompt, 
+            self.population_size,
+            self.population_diversity_level
         )
     
     async def _evaluate_population(
         self, 
+        *,
         test_cases: Optional[List[PromptTestCase]], 
         runner: PromptRunner, 
-        **kwargs: Any
+        variables: Optional[Dict[str, Any]] = None,
+        model: str,
     ) -> List[FitnessEvaluation]:
         """Evaluate fitness for entire population"""
         if not self.fitness_function:
@@ -923,7 +846,13 @@ class LLMGeneticOptimizer:
         
         async def evaluate_single(prompt: PromptTemplate) -> FitnessEvaluation:
             async with semaphore:
-                return await self.fitness_function.evaluate(runner, prompt, test_cases, **kwargs)
+                return await self.fitness_function.evaluate(
+                    runner=runner,
+                    prompt=prompt,
+                    test_cases=test_cases,
+                    variables=variables,
+                    model=model,
+                )
         
         tasks = [evaluate_single(prompt) for prompt in self.population]
         evaluations = await asyncio.gather(*tasks, return_exceptions=True)
@@ -956,31 +885,24 @@ class LLMGeneticOptimizer:
             
             # Crossover
             if random.random() < self.crossover_rate and self.crossover:
-                try:
-                    offspring1, offspring2 = await self.crossover.crossover(parent1, parent2)
-                    new_population.extend([offspring1, offspring2])
-                except Exception as e:
-                    raise Exception("Error during crossover") from e
+                offspring1, offspring2 = await self.crossover.crossover(parent1, parent2)
+                new_population.extend([offspring1, offspring2])
             else:
                 # Just copy parents
                 new_population.extend([parent1, parent2])
             
             # Mutation
             if random.random() < self.mutation_rate and self.mutator:
-                try:
-                    mutation_types = ["random", "improve_clarity", "add_examples", "optimize_structure"]
-                    mutation_type = random.choice(mutation_types)
-                    mutation_strength = random.uniform(0.3, 0.8)
-                    
-                    mutated = await self.mutator.mutate(
-                        new_population[-1], 
-                        mutation_type=mutation_type,
-                        mutation_strength=mutation_strength
-                    )
-                    new_population[-1] = mutated
-                except Exception:
-                    # Fallback to simple mutation
-                    pass
+                mutation_types = ["random", "improve_clarity", "add_examples", "optimize_structure"]
+                mutation_type = random.choice(mutation_types)
+                mutation_strength = random.uniform(0.3, 0.8)
+                
+                mutated = await self.mutator.mutate(
+                    new_population[-1], 
+                    mutation_type=mutation_type,
+                    mutation_strength=mutation_strength
+                )
+                new_population[-1] = mutated
         
         # Trim to exact population size
         self.population = new_population[:self.population_size]

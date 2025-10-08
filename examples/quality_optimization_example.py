@@ -5,8 +5,9 @@ Example of quality-based prompt optimization without test cases
 import asyncio
 from promptly import (
     LLMGeneticOptimizer,
-    LLMAccuracyFitnessFunction,
+    LLMComprehensiveFitnessFunction,
     PromptTemplate,
+    PromptRunner,
     OpenAIClient,
 )
 
@@ -16,8 +17,9 @@ async def quality_optimization_example():
     
     # Setup clients
     eval_client = OpenAIClient()
-    mutation_client = OpenAIClient()
-    crossover_client = OpenAIClient()
+    
+    # Create runner for optimization
+    runner = PromptRunner(client=eval_client)
     
     # Create base prompt
     base_prompt = PromptTemplate(
@@ -27,11 +29,11 @@ async def quality_optimization_example():
     
     # Setup optimizer for quality-based optimization
     optimizer = LLMGeneticOptimizer(
+        eval_model="gpt-4",
         population_size=6,
         generations=3,
-        fitness_function=LLMAccuracyFitnessFunction(eval_client, "gpt-4"),
-        mutation_client=mutation_client,
-        crossover_client=crossover_client,
+        fitness_function=LLMComprehensiveFitnessFunction(eval_client, "gpt-4"),
+        eval_client=eval_client,
         mutation_rate=0.4,
         crossover_rate=0.7
     )
@@ -43,8 +45,8 @@ async def quality_optimization_example():
     print("Mode: Quality-based optimization (no test cases)")
     print()
     
-    # Run optimization without test cases
-    result = await optimizer.optimize(base_prompt, test_cases=None, runner=None)
+    # Run optimization without test cases (quality-based)
+    result = await optimizer.optimize(runner, base_prompt, test_cases=None)
     
     print("Optimization completed!")
     print(f"Best quality score: {result.fitness_score:.3f}")
@@ -64,8 +66,9 @@ async def creative_writing_optimization():
     
     # Setup clients
     eval_client = OpenAIClient()
-    mutation_client = OpenAIClient()
-    crossover_client = OpenAIClient()
+    
+    # Create runner for optimization
+    runner = PromptRunner(client=eval_client)
     
     # Create base prompt for creative writing
     base_prompt = PromptTemplate(
@@ -75,11 +78,11 @@ async def creative_writing_optimization():
     
     # Setup optimizer
     optimizer = LLMGeneticOptimizer(
+        eval_model="gpt-4",
         population_size=8,
         generations=4,
-        fitness_function=LLMAccuracyFitnessFunction(eval_client, "gpt-4"),
-        mutation_client=mutation_client,
-        crossover_client=crossover_client,
+        fitness_function=LLMComprehensiveFitnessFunction(eval_client, "gpt-4"),
+        eval_client=eval_client,
         mutation_rate=0.5,
         crossover_rate=0.8
     )
@@ -89,7 +92,7 @@ async def creative_writing_optimization():
     print()
     
     # Run optimization
-    result = await optimizer.optimize(base_prompt, test_cases=None, runner=None)
+    result = await optimizer.optimize(runner, base_prompt, test_cases=None)
     
     print("Creative writing optimization completed!")
     print(f"Best quality score: {result.fitness_score:.3f}")
@@ -107,8 +110,9 @@ async def instruction_optimization():
     
     # Setup clients
     eval_client = OpenAIClient()
-    mutation_client = OpenAIClient()
-    crossover_client = OpenAIClient()
+    
+    # Create runner for optimization
+    runner = PromptRunner(client=eval_client)
     
     # Create base prompt for instructions
     base_prompt = PromptTemplate(
@@ -118,11 +122,11 @@ async def instruction_optimization():
     
     # Setup optimizer
     optimizer = LLMGeneticOptimizer(
+        eval_model="gpt-4",
         population_size=6,
         generations=3,
-        fitness_function=LLMAccuracyFitnessFunction(eval_client, "gpt-4"),
-        mutation_client=mutation_client,
-        crossover_client=crossover_client,
+        fitness_function=LLMComprehensiveFitnessFunction(eval_client, "gpt-4"),
+        eval_client=eval_client,
         mutation_rate=0.3,
         crossover_rate=0.7
     )
@@ -132,7 +136,7 @@ async def instruction_optimization():
     print()
     
     # Run optimization
-    result = await optimizer.optimize(base_prompt, test_cases=None, runner=None)
+    result = await optimizer.optimize(runner, base_prompt, test_cases=None)
     
     print("Instruction optimization completed!")
     print(f"Best quality score: {result.fitness_score:.3f}")
