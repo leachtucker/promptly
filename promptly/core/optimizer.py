@@ -527,7 +527,7 @@ Create variations that explore different approaches:
 7. Different prompt engineering techniques (few-shot, chain-of-thought, etc.)
 
 CONSTRAINTS:
-- Keep the same template variables ({{variable_name}}) exactly as they appear
+- Keep the same template variajbles ({{variable_name}}) exactly as they appear
 - Maintain the core purpose and functionality of the original prompt
 - Each variation should be complete and usable
 - Make each variation distinct and valuable
@@ -684,9 +684,9 @@ class LLMGeneticOptimizer:
         population_size: int = 20,
         generations: int = 10,
         fitness_function: Optional[LLMFitnessFunction] = None,
-        mutation_rate: float = 0.3,
+        mutation_rate: float = 0.5,
         crossover_rate: float = 0.7,
-        elite_size: int = 2,
+        elite_ratio: float = 0.2,
         eval_client: Optional[BaseLLMClient] = None,
         tracer: Optional[Tracer] = None,
         population_diversity_level: float = 0.7,
@@ -699,7 +699,8 @@ class LLMGeneticOptimizer:
         self.fitness_function = fitness_function or LLMComprehensiveFitnessFunction(self.eval_client, eval_model)
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
-        self.elite_size = elite_size
+        self.elite_ratio = elite_ratio
+        self.elite_size = max(1, int(population_size * elite_ratio))
         self.tracer = tracer or Tracer()
         self.progress_callback = progress_callback or NoOpProgressCallback()
         
@@ -812,6 +813,7 @@ class LLMGeneticOptimizer:
             metadata={
                 "mutation_rate": self.mutation_rate,
                 "crossover_rate": self.crossover_rate,
+                "elite_ratio": self.elite_ratio,
                 "elite_size": self.elite_size,
                 "llm_powered": True,
                 "population_diversity_level": self.population_diversity_level

@@ -124,7 +124,7 @@ python -m promptly.cli.main optimize \
   --generations 5 \
   --model gpt-4 \
   --eval-model gpt-4 \
-  --elite-size 3 \
+  --elite-ratio 0.3 \
   --mutation-rate 0.3 \
   --crossover-rate 0.7 \
   --trace \
@@ -144,7 +144,7 @@ python -m promptly.cli.main optimize \
   --eval-model gpt-4 \
   --provider openai \
   --api-key $OPENAI_API_KEY \
-  --elite-size 4 \
+  --elite-ratio 0.2 \
   --mutation-rate 0.4 \
   --crossover-rate 0.8 \
   --trace
@@ -220,7 +220,7 @@ python -m promptly.cli.main optimize \
   --provider openai \
   --model gpt-4 \
   --eval-model gpt-4 \
-  --elite-size 3 \
+  --elite-ratio 0.25 \
   --trace \
   --output discovered_prompt.json
 ```
@@ -384,7 +384,7 @@ optimizer = LLMGeneticOptimizer(
     eval_client=eval_client,
     mutation_rate=0.3,                    # 30% chance of mutation
     crossover_rate=0.7,                   # 70% chance of crossover
-    elite_size=2,                         # Keep top 2 individuals
+    elite_ratio=0.2,                      # Keep top 20% of population as elites
     population_diversity_level=0.7,       # Diversity level for LLM population generation
     tracer=Tracer()                       # Enable tracing
 )
@@ -408,7 +408,7 @@ Options:
   --api-key TEXT                  API key for the provider
   --mutation-rate FLOAT           Mutation rate 0.0-1.0 (default: 0.3)
   --crossover-rate FLOAT          Crossover rate 0.0-1.0 (default: 0.7)
-  --elite-size INTEGER            Number of elite individuals to preserve (default: 2)
+  --elite-ratio FLOAT             Ratio of elite individuals to preserve 0.0-1.0 (default: 0.2)
   --use-llm-population            Use LLM to generate initial population (default: True)
   --population-diversity FLOAT    Diversity level for population generation 0.0-1.0 (default: 0.7)
   --trace                         Enable tracing (default: True)

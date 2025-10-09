@@ -93,12 +93,13 @@ class RichProgressCallback(ProgressCallback):
         champion_emoji = "🏆" if best_fitness >= 0.8 else "🥇" if best_fitness >= 0.6 else "🔥"
         self.console.print(f"{champion_emoji} [bold green]Generation {generation} Champion![/bold green] [bold {fitness_color}]{best_fitness:.3f}[/bold {fitness_color}]")
         
-        # Show best prompt preview (truncated for readability)
-        prompt_preview = best_prompt
-        if len(prompt_preview) > 80:
-            prompt_preview = prompt_preview[:80] + "..."
-        
-        self.console.print(f"[dim]💡 Best prompt: [blue]{prompt_preview}[/blue][/dim]")
+        # Show full best prompt
+        self.console.print(Panel(
+            f"[blue]{best_prompt}[/blue]",
+            title="💡 Best Prompt",
+            border_style="blue",
+            expand=False
+        ))
         
         # Show improvement over previous generation
         if len(self.best_candidates) > 1:
@@ -111,10 +112,14 @@ class RichProgressCallback(ProgressCallback):
             else:
                 self.console.print("[dim]➡️ Maintaining performance[/dim]")
         
-        # Show LLM reasoning (if available and not too long)
+        # Show full LLM reasoning (if available)
         if reasoning and len(reasoning) > 0:
-            reasoning_preview = reasoning[:100] + "..." if len(reasoning) > 100 else reasoning
-            self.console.print(f"[dim]🤖 LLM insight: {reasoning_preview}[/dim]")
+            self.console.print(Panel(
+                f"[white]{reasoning}[/white]",
+                title="🤖 LLM Insight",
+                border_style="cyan",
+                expand=False
+            ))
         
         self.console.print()
     
@@ -356,7 +361,7 @@ def trace(trace_id: Optional[str], optimizer_only: bool, optimization_id: Option
 @click.option("--api-key", help="API key for the provider")
 @click.option("--mutation-rate", default=0.3, help="Mutation rate (0.0-1.0)")
 @click.option("--crossover-rate", default=0.7, help="Crossover rate (0.0-1.0)")
-@click.option("--elite-size", default=2, help="Number of elite individuals to preserve")
+@click.option("--elite-ratio", default=0.2, help="Ratio of elite individuals to preserve (0.0-1.0)")
 @click.option("--trace", is_flag=True, help="Enable tracing", default=True)
 @click.option("--trace-optimizer", is_flag=True, help="Enable tracing of optimizer prompts with separate context", default=False)
 @click.option("--output", "-o", help="Output file to save the optimized prompt")
@@ -373,7 +378,7 @@ def optimize(
     api_key: Optional[str],
     mutation_rate: float,
     crossover_rate: float,
-    elite_size: int,
+    elite_ratio: float,
     trace: bool,
     trace_optimizer: bool,
     output: Optional[str],
@@ -381,16 +386,18 @@ def optimize(
     population_diversity: float,
 ) -> None:
     """Optimize a prompt using LLM-powered genetic algorithm (strictly LLM-driven)"""
-
-    print(f"Evaluating model...: {eval_model}")
     
     async def _run_optimization():
         try:
             # Load test cases if provided
             test_cases_list = None
             if test_cases:
-                with open(test_cases, 'r') as f:
-                    test_data = json.load(f)
+                try:
+                    with open(test_cases, 'r') as f:
+                        test_data = json.load(f)
+                except Exception as e:
+                    click.echo(f"Error loading test cases: {e}")
+                    return
                 
                 # Parse test cases
                 test_cases_list = []
@@ -434,7 +441,7 @@ def optimize(
                 tracer=tracer,
                 mutation_rate=mutation_rate,
                 crossover_rate=crossover_rate,
-                elite_size=elite_size,
+                elite_ratio=elite_ratio,
                 eval_client=eval_client,
                 population_diversity_level=population_diversity
             )
