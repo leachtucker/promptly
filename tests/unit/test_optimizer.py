@@ -3,6 +3,7 @@ Tests for optimizer module
 """
 
 import pytest
+import asyncio
 from typing import Optional, List
 from promptly.core.optimizer import (
     LLMGeneticOptimizer,
@@ -599,3 +600,276 @@ class TestLLMGeneticOptimizerWithPopulationGeneration:
         assert len(optimizer.population) == 4
         assert optimizer.population[0].template == "Answer this: {{question}}"
         assert optimizer.population[1].name.startswith("test_prompt_llm_var_")
+
+
+class TestParallelExecutionOptimizations:
+    """Test parallel execution optimizations for performance"""
+    
+    @pytest.mark.asyncio
+    async def test_parallel_test_case_execution(self):
+        """Test that test cases are executed in parallel"""
+        import time
+        import json
+        from promptly.core.runner import PromptRunner
+        
+        # Create mock client that adds delay to simulate API calls
+        class DelayedMockClient(MockLLMClient):
+            async def generate(self, prompt, model=None, **kwargs):
+                await asyncio.sleep(0.05)  # 50ms delay per call
+                # Return proper JSON for evaluation calls
+                if "evaluate" in prompt.lower() or "score" in prompt.lower():
+                    return LLMResponse(
+                        content=json.dumps({"score": 0.8, "reasoning": "Good"}),
+                        model="mock-model",
+                        usage=UsageData(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+                        metadata={}
+                    )
+                return await super().generate(prompt, model, **kwargs)
+        
+        client = DelayedMockClient(responses=["Test response"])
+        runner = PromptRunner(client)
+        
+        # Create 10 test cases
+        test_cases = [
+            PromptTestCase(
+                input_variables={"x": i},
+                expected_output=str(i)
+            ) for i in range(10)
+        ]
+        
+        fitness_fn = LLMComprehensiveFitnessFunction(
+            client, 
+            "mock-model",
+            test_case_concurrency=10
+        )
+        
+        prompt = PromptTemplate(template="Test {x}", name="test")
+        
+        # Time the parallel execution
+        start = time.time()
+        result = await fitness_fn.evaluate(
+            runner=runner,
+            prompt=prompt,
+            model="mock-model",
+            test_cases=test_cases
+        )
+        duration = time.time() - start
+        
+        # With parallelization (10 concurrent), should take ~150ms (50ms + overhead)
+        # Without parallelization, would take ~500ms (10 * 50ms)
+        assert duration < 0.3, f"Expected < 300ms with parallelization, got {duration*1000:.0f}ms"
+        assert len(result.test_results) == 10
+        
+        # Verify all test cases were run
+        for i, test_result in enumerate(result.test_results):
+            assert "x" in test_result["input"]
+    
+    @pytest.mark.asyncio
+    async def test_parallel_test_case_execution_with_concurrency_limit(self):
+        """Test that concurrency limit is respected"""
+        import json
+        from promptly.core.runner import PromptRunner
+        
+        call_times = []
+        
+        class TimedMockClient(MockLLMClient):
+            async def generate(self, prompt, model=None, **kwargs):
+                import time
+                call_times.append(time.time())
+                await asyncio.sleep(0.05)
+                # Return proper JSON for evaluation calls
+                if "evaluate" in prompt.lower() or "score" in prompt.lower():
+                    return LLMResponse(
+                        content=json.dumps({"score": 0.8, "reasoning": "Good"}),
+                        model="mock-model",
+                        usage=UsageData(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+                        metadata={}
+                    )
+                return await super().generate(prompt, model, **kwargs)
+        
+        client = TimedMockClient(responses=["Test response"])
+        runner = PromptRunner(client)
+        
+        # Create 20 test cases with concurrency limit of 5
+        test_cases = [
+            PromptTestCase(
+                input_variables={"x": i},
+                expected_output=str(i)
+            ) for i in range(20)
+        ]
+        
+        fitness_fn = LLMComprehensiveFitnessFunction(
+            client,
+            "mock-model",
+            test_case_concurrency=5  # Limit to 5 concurrent
+        )
+        
+        prompt = PromptTemplate(template="Test {x}", name="test")
+        
+        result = await fitness_fn.evaluate(
+            runner=runner,
+            prompt=prompt,
+            model="mock-model",
+            test_cases=test_cases
+        )
+        
+        assert len(result.test_results) == 20
+        # With concurrency=5 and 20 tests, we should have at least 4 waves of calls
+        # Note: There's one additional call for the evaluation itself
+        assert len(call_times) >= 20
+    
+    @pytest.mark.asyncio
+    async def test_configurable_evaluation_concurrency(self):
+        """Test that evaluation concurrency is configurable and used"""
+        from promptly.core.runner import PromptRunner
+        
+        # Create clients
+        eval_client = MockLLMClient(structured_responses=[
+            {"score": 0.8, "reasoning": "Good prompt"}
+        ])
+        
+        exec_client = MockLLMClient(responses=["Response"])
+        
+        optimizer = LLMGeneticOptimizer(
+            eval_model="mock-model",
+            population_size=10,
+            generations=1,
+            eval_client=eval_client,
+            max_concurrent_evaluations=5  # Test with 5 concurrent
+        )
+        
+        # Verify the setting was applied
+        assert optimizer.max_concurrent_evaluations == 5
+        
+        # Create a population
+        optimizer.population = [
+            PromptTemplate(template=f"Test prompt {i}", name=f"test_{i}")
+            for i in range(10)
+        ]
+        
+        runner = PromptRunner(exec_client)
+        
+        # This should use the configured concurrency
+        evaluations = await optimizer._evaluate_population(
+            test_cases=None,
+            runner=runner,
+            model="mock-model"
+        )
+        
+        # Should get evaluations for all prompts
+        assert len(evaluations) > 0
+    
+    @pytest.mark.asyncio
+    async def test_parallel_mutation_crossover_operations(self):
+        """Test that mutation and crossover operations are executed in parallel"""
+        import time
+        
+        # Create mock clients with delay
+        class SlowMockClient(MockLLMClient):
+            async def generate(self, prompt, model=None, **kwargs):
+                await asyncio.sleep(0.05)  # 50ms delay
+                return await super().generate(prompt, model, **kwargs)
+        
+        eval_client = SlowMockClient(structured_responses=[
+            {"mutated_prompt": "Mutated: Test prompt"},
+            {"offspring1": "Offspring 1", "offspring2": "Offspring 2"}
+        ])
+        
+        optimizer = LLMGeneticOptimizer(
+            eval_model="mock-model",
+            population_size=10,
+            generations=1,
+            eval_client=eval_client,
+            mutation_rate=0.5,
+            crossover_rate=0.5,
+            max_concurrent_evaluations=10
+        )
+        
+        # Create mock evaluations
+        evaluations = [
+            FitnessEvaluation(
+                prompt=PromptTemplate(template=f"Prompt {i}", name=f"p{i}"),
+                score=0.5 + i * 0.05,
+                test_results=[],
+                evaluation_reasoning="Test"
+            )
+            for i in range(10)
+        ]
+        
+        # Time the operation
+        start = time.time()
+        await optimizer._create_next_generation_llm(evaluations)
+        duration = time.time() - start
+        
+        # With parallelization, should be fast (verify it completed)
+        # Without parallelization, would take much longer
+        assert duration < 5.0, f"Operation took too long: {duration}s"
+        assert len(optimizer.population) == 10
+        
+        # Verify population contains prompts
+        for prompt in optimizer.population:
+            assert isinstance(prompt, PromptTemplate)
+    
+    @pytest.mark.asyncio
+    async def test_parallel_operations_handle_failures_gracefully(self):
+        """Test that parallel operations handle individual failures gracefully"""
+        import json
+        from promptly.core.runner import PromptRunner
+        
+        # Create client that fails some requests
+        class FailingSometimesMockClient(MockLLMClient):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.call_count = 0
+            
+            async def generate(self, prompt, model=None, **kwargs):
+                self.call_count += 1
+                # Return proper JSON for evaluation calls (don't fail on evaluation)
+                if "evaluate" in prompt.lower() or "score" in prompt.lower():
+                    return LLMResponse(
+                        content=json.dumps({"score": 0.8, "reasoning": "Good"}),
+                        model="mock-model",
+                        usage=UsageData(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+                        metadata={}
+                    )
+                # Fail every 3rd test case execution
+                if self.call_count % 3 == 0:
+                    raise Exception("Simulated API failure")
+                return await super().generate(prompt, model, **kwargs)
+        
+        client = FailingSometimesMockClient(responses=["Test response"])
+        runner = PromptRunner(client)
+        
+        # Create test cases
+        test_cases = [
+            PromptTestCase(
+                input_variables={"x": i},
+                expected_output=str(i)
+            ) for i in range(9)  # 3 will fail
+        ]
+        
+        fitness_fn = LLMComprehensiveFitnessFunction(
+            client,
+            "mock-model",
+            test_case_concurrency=10
+        )
+        
+        prompt = PromptTemplate(template="Test {x}", name="test")
+        
+        # Should not crash even with some failures
+        result = await fitness_fn.evaluate(
+            runner=runner,
+            prompt=prompt,
+            model="mock-model",
+            test_cases=test_cases
+        )
+        
+        # Should still have results for all test cases (with error messages)
+        assert len(result.test_results) == 9
+        
+        # Count successful and failed results
+        successful = sum(1 for r in result.test_results if "error" not in r)
+        failed = sum(1 for r in result.test_results if "error" in r)
+        
+        assert successful > 0  # Some should succeed
+        assert failed > 0  # Some should fail

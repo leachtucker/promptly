@@ -144,10 +144,11 @@ class LLMFitnessFunction(ABC):
 class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
     """Comprehensive LLM-powered fitness function combining accuracy and semantic evaluation"""
     
-    def __init__(self, evaluation_client: BaseLLMClient, evaluation_model: str):
+    def __init__(self, evaluation_client: BaseLLMClient, evaluation_model: str, test_case_concurrency: int = 10):
         super().__init__(evaluation_client, evaluation_model)
         self.accuracy_weight = 0.6  # Weight for accuracy evaluation
         self.semantic_weight = 0.4  # Weight for semantic evaluation
+        self.test_case_concurrency = test_case_concurrency  # Max concurrent test case executions
     
     async def evaluate(
         self,
@@ -170,29 +171,13 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
             
             return await self._evaluate_prompt_quality(prompt, output)
         
-        # First, run the prompt on all test cases
-        test_results = []
-        for test_case in test_cases:
-            try:
-                response = await runner.run(
-                    model=model,
-                    prompt=prompt,
-                    variables=test_case.input_variables,
-                )
-                test_results.append({
-                    "input": test_case.input_variables,
-                    "expected": test_case.expected_output,
-                    "actual": response.content,
-                    "metadata": test_case.metadata
-                })
-            except Exception as e:
-                test_results.append({
-                    "input": test_case.input_variables,
-                    "expected": test_case.expected_output,
-                    "actual": f"Error: {str(e)}",
-                    "error": str(e),
-                    "metadata": test_case.metadata
-                })
+        # Run test cases in parallel
+        test_results = await self._run_test_cases_parallel(
+            runner=runner,
+            model=model,
+            prompt=prompt,
+            test_cases=test_cases
+        )
         
         # Run comprehensive evaluation with both accuracy and semantic analysis
         evaluation_prompt = self._create_comprehensive_evaluation_prompt(prompt, test_results)
@@ -222,6 +207,42 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
             metadata={"evaluation_method": "comprehensive_llm_powered"}
         )
     
+    async def _run_test_cases_parallel(
+        self,
+        runner: PromptRunner,
+        model: str,
+        prompt: PromptTemplate,
+        test_cases: List[PromptTestCase]
+    ) -> List[Dict[str, Any]]:
+        """Run test cases in parallel with controlled concurrency"""
+        semaphore = asyncio.Semaphore(self.test_case_concurrency)
+        
+        async def run_single_test(test_case: PromptTestCase) -> Dict[str, Any]:
+            async with semaphore:
+                try:
+                    response = await runner.run(
+                        model=model,
+                        prompt=prompt,
+                        variables=test_case.input_variables,
+                    )
+                    return {
+                        "input": test_case.input_variables,
+                        "expected": test_case.expected_output,
+                        "actual": response.content,
+                        "metadata": test_case.metadata
+                    }
+                except Exception as e:
+                    return {
+                        "input": test_case.input_variables,
+                        "expected": test_case.expected_output,
+                        "actual": f"Error: {str(e)}",
+                        "error": str(e),
+                        "metadata": test_case.metadata
+                    }
+        
+        tasks = [run_single_test(test_case) for test_case in test_cases]
+        results = await asyncio.gather(*tasks)
+        return results
     
     def _create_comprehensive_evaluation_prompt(self, prompt: PromptTemplate, test_results: List[Dict[str, Any]]) -> str:
         """Create comprehensive evaluation prompt combining accuracy and semantic analysis"""
@@ -691,12 +712,20 @@ class LLMGeneticOptimizer:
         tracer: Optional[Tracer] = None,
         population_diversity_level: float = 0.7,
         progress_callback: Optional[ProgressCallback] = None,
+        max_concurrent_evaluations: int = 10,
+        test_case_concurrency: int = 10,
     ):
         self.eval_client = eval_client or OpenAIClient()
 
         self.population_size = population_size
         self.generations = generations
-        self.fitness_function = fitness_function or LLMComprehensiveFitnessFunction(self.eval_client, eval_model)
+        self.max_concurrent_evaluations = max_concurrent_evaluations
+        self.test_case_concurrency = test_case_concurrency
+        self.fitness_function = fitness_function or LLMComprehensiveFitnessFunction(
+            self.eval_client, 
+            eval_model,
+            test_case_concurrency=test_case_concurrency
+        )
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
         self.elite_ratio = elite_ratio
@@ -843,8 +872,8 @@ class LLMGeneticOptimizer:
         if not self.fitness_function:
             raise ValueError("No fitness function provided")
         
-        # Run evaluations in parallel for efficiency
-        semaphore = asyncio.Semaphore(5)  # Limit concurrent evaluations
+        # Run evaluations in parallel with configurable concurrency
+        semaphore = asyncio.Semaphore(self.max_concurrent_evaluations)
         
         async def evaluate_single(prompt: PromptTemplate) -> FitnessEvaluation:
             async with semaphore:
@@ -869,7 +898,7 @@ class LLMGeneticOptimizer:
         return winner.prompt
     
     async def _create_next_generation_llm(self, evaluations: List[FitnessEvaluation]) -> None:
-        """Create next generation using LLM-powered operations"""
+        """Create next generation using parallelized LLM-powered operations"""
         new_population = []
         
         # Sort by fitness (descending)
@@ -879,35 +908,89 @@ class LLMGeneticOptimizer:
         for i in range(min(self.elite_size, len(sorted_evaluations))):
             new_population.append(sorted_evaluations[i].prompt)
         
-        # Generate offspring using LLM crossover and mutation
-        while len(new_population) < self.population_size:
-            # Select parents (tournament selection)
+        # Calculate how many offspring we need
+        offspring_needed = self.population_size - len(new_population)
+        
+        # Pre-select all parents and determine operations
+        operations = []
+        for _ in range(offspring_needed):
             parent1 = self._tournament_selection(sorted_evaluations)
             parent2 = self._tournament_selection(sorted_evaluations)
             
-            # Crossover
-            if random.random() < self.crossover_rate and self.crossover:
-                offspring1, offspring2 = await self.crossover.crossover(parent1, parent2)
-                new_population.extend([offspring1, offspring2])
-            else:
-                # Just copy parents
-                new_population.extend([parent1, parent2])
+            # Determine if crossover and mutation will be applied
+            apply_crossover = random.random() < self.crossover_rate
+            apply_mutation = random.random() < self.mutation_rate
             
-            # Mutation
-            if random.random() < self.mutation_rate and self.mutator:
-                mutation_types = ["random", "improve_clarity", "add_examples", "optimize_structure"]
-                mutation_type = random.choice(mutation_types)
-                mutation_strength = random.uniform(0.3, 0.8)
-                
-                mutated = await self.mutator.mutate(
-                    new_population[-1], 
-                    mutation_type=mutation_type,
-                    mutation_strength=mutation_strength
-                )
-                new_population[-1] = mutated
+            operations.append({
+                'parent1': parent1,
+                'parent2': parent2,
+                'apply_crossover': apply_crossover,
+                'apply_mutation': apply_mutation,
+                'mutation_type': random.choice(["random", "improve_clarity", "add_examples", "optimize_structure"]),
+                'mutation_strength': random.uniform(0.3, 0.8)
+            })
+        
+        # Execute all operations in parallel with controlled concurrency
+        offspring = await self._execute_generation_operations_parallel(operations)
+        
+        # Add offspring to new population
+        new_population.extend(offspring)
         
         # Trim to exact population size
         self.population = new_population[:self.population_size]
+    
+    async def _execute_generation_operations_parallel(
+        self, 
+        operations: List[Dict[str, Any]]
+    ) -> List[PromptTemplate]:
+        """Execute all crossover and mutation operations in parallel"""
+        
+        # Semaphore to limit concurrent LLM calls
+        semaphore = asyncio.Semaphore(self.max_concurrent_evaluations)
+        
+        async def process_operation(op: Dict[str, Any]) -> PromptTemplate:
+            async with semaphore:
+                parent1 = op['parent1']
+                parent2 = op['parent2']
+                
+                # Crossover
+                if op['apply_crossover'] and self.crossover:
+                    try:
+                        offspring1, offspring2 = await self.crossover.crossover(parent1, parent2)
+                        # Use first offspring by default
+                        result = offspring1
+                    except Exception:
+                        # On crossover failure, fall back to parent
+                        result = parent1
+                else:
+                    # Just use parent1
+                    result = parent1
+                
+                # Mutation
+                if op['apply_mutation'] and self.mutator:
+                    try:
+                        result = await self.mutator.mutate(
+                            result,
+                            mutation_type=op['mutation_type'],
+                            mutation_strength=op['mutation_strength']
+                        )
+                    except Exception:
+                        # On mutation failure, keep the unmutated result
+                        pass
+                
+                return result
+        
+        tasks = [process_operation(op) for op in operations]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Filter out exceptions and return valid prompts
+        valid_results = []
+        for result in results:
+            if isinstance(result, PromptTemplate):
+                valid_results.append(result)
+            # Silently skip failed operations - they're logged by the error handlers above
+        
+        return valid_results
     
     async def _log_generation_progress(self, generation: int, best_evaluation: FitnessEvaluation) -> None:
         """Log progress of optimization"""

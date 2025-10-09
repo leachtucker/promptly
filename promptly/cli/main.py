@@ -362,6 +362,8 @@ def trace(trace_id: Optional[str], optimizer_only: bool, optimization_id: Option
 @click.option("--mutation-rate", default=0.3, help="Mutation rate (0.0-1.0)")
 @click.option("--crossover-rate", default=0.7, help="Crossover rate (0.0-1.0)")
 @click.option("--elite-ratio", default=0.2, help="Ratio of elite individuals to preserve (0.0-1.0)")
+@click.option("--max-concurrent-evaluations", default=10, help="Maximum concurrent evaluation API calls (higher = faster but more load)")
+@click.option("--test-case-concurrency", default=10, help="Maximum concurrent test case executions per prompt (higher = faster)")
 @click.option("--trace", is_flag=True, help="Enable tracing", default=True)
 @click.option("--trace-optimizer", is_flag=True, help="Enable tracing of optimizer prompts with separate context", default=False)
 @click.option("--output", "-o", help="Output file to save the optimized prompt")
@@ -379,6 +381,8 @@ def optimize(
     mutation_rate: float,
     crossover_rate: float,
     elite_ratio: float,
+    max_concurrent_evaluations: int,
+    test_case_concurrency: int,
     trace: bool,
     trace_optimizer: bool,
     output: Optional[str],
@@ -443,7 +447,9 @@ def optimize(
                 crossover_rate=crossover_rate,
                 elite_ratio=elite_ratio,
                 eval_client=eval_client,
-                population_diversity_level=population_diversity
+                population_diversity_level=population_diversity,
+                max_concurrent_evaluations=max_concurrent_evaluations,
+                test_case_concurrency=test_case_concurrency
             )
             
             # Calculate and display API call estimates
@@ -475,6 +481,8 @@ def optimize(
             config_table.add_row("Generations", f"[bold green]{generations}[/bold green]")
             config_table.add_row("LLM-Driven", "[bold green]✅ Strictly LLM-based operations[/bold green]")
             config_table.add_row("Population Diversity", f"[bold green]{population_diversity}[/bold green]")
+            config_table.add_row("Max Concurrent Evaluations", f"[bold cyan]{max_concurrent_evaluations}[/bold cyan]")
+            config_table.add_row("Test Case Concurrency", f"[bold cyan]{test_case_concurrency}[/bold cyan]")
             
             if test_cases_list:
                 config_table.add_row("Test Cases", f"[bold green]{len(test_cases_list)}[/bold green]")
