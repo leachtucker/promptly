@@ -76,7 +76,7 @@ class OptimizationResult(BaseModel):
 class PromptTestCase(BaseModel):
     """A test case for prompt evaluation"""
     input_variables: Dict[str, Any]
-    expected_output: str
+    expected_output: Any  # Can be string or dict for structured outputs
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -106,18 +106,18 @@ class QualityEvaluationResponse(BaseModel):
 
 class MutationResponse(BaseModel):
     """Structured response for prompt mutation"""
-    mutated_prompt: str = Field(description="The improved prompt template")
+    mutated_prompt: str = Field(description="The improved prompt template. Valid JSON string value.")
 
 
 class PopulationGenerationResponse(BaseModel):
     """Structured response for population generation"""
-    variations: List[str] = Field(description="List of prompt template variations")
+    variations: List[str] = Field(description="List of prompt template variations. Valid JSON string value.")
 
 
 class CrossoverResponse(BaseModel):
     """Structured response for prompt crossover"""
-    offspring1: str = Field(description="First offspring prompt template")
-    offspring2: str = Field(description="Second offspring prompt template")
+    offspring1: str = Field(description="First offspring prompt template. Valid JSON string value")
+    offspring2: str = Field(description="Second offspring prompt template. Valid JSON string value")
 
 
 class LLMFitnessFunction(ABC):
@@ -167,9 +167,7 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
                 prompt=prompt,
                 variables=variables,
             )
-            output = output.content
-            
-            return await self._evaluate_prompt_quality(prompt, output)
+            return await self._evaluate_prompt_quality(prompt, output.content or "")
         
         # Run test cases in parallel
         test_results = await self._run_test_cases_parallel(
@@ -186,11 +184,10 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
             response = await self.evaluation_client.generate(
                 prompt=evaluation_prompt,
                 model=self.evaluation_model,
-                temperature=0.3,  # Low temperature for consistent evaluation
-                max_completion_tokens=800
+                # temperature=0.3,  # Low temperature for consistent evaluation
             )
 
-            evaluation_response = EvaluationResponse.model_validate_json(response.content)
+            evaluation_response = EvaluationResponse.model_validate_json(response.content or "")
             
             # Extract score and reasoning from structured response
             score = evaluation_response.score
@@ -328,10 +325,9 @@ TEST RESULTS:
                 prompt=quality_prompt,
                 model=self.evaluation_model,
                 # temperature=0.3,
-                max_completion_tokens=500
             )
             
-            evaluation_response = QualityEvaluationResponse.model_validate_json(response.content)
+            evaluation_response = QualityEvaluationResponse.model_validate_json(response.content or "")
             
             score = evaluation_response.score
             reasoning = evaluation_response.reasoning
@@ -432,10 +428,9 @@ class LLMPromptMutator:
                 prompt=mutation_prompt,
                 model=self.mutation_model,
                 # temperature=0.7 + mutation_strength * 0.3,  # Higher temp for more creativity
-                max_completion_tokens=1000
             )
             
-            mutation_response = MutationResponse.model_validate_json(response.content)
+            mutation_response = MutationResponse.model_validate_json(response.content or "")
             
             mutated_template = mutation_response.mutated_prompt
             
@@ -481,9 +476,20 @@ IMPORTANT CONSTRAINTS:
 3. Only improve the prompt, don't change its fundamental nature
 4. The output should be a complete, usable prompt template
 
-RESPONSE:
-- ONLY VALID JSON matching the JSON SCHEMA
-- NO OTHER TEXT
+CRITICAL JSON FORMATTING REQUIREMENTS:
+- The mutated_prompt MUST be a single valid JSON string value
+- Properly escape ALL newlines as \\n (backslash-n) in the JSON
+- Escape ALL double quotes as \\" in the JSON
+- Escape ALL backslashes as \\\\ in the JSON
+- Do NOT include literal line breaks within string values
+- The entire response must be parseable as valid JSON
+- Test your JSON mentally before responding - it must parse correctly
+
+RESPONSE FORMAT:
+- ONLY VALID JSON matching the JSON SCHEMA below
+- NO markdown code blocks (no ```json)
+- NO explanatory text before or after
+- Ensure every string is properly escaped for JSON
 
 JSON SCHEMA:
 {simple_schema(MutationResponse)}
@@ -512,10 +518,11 @@ class LLMPopulationGenerator:
                 prompt=generation_prompt,
                 model=self.generation_model,
                 # temperature=0.7 + diversity_level * 0.3,
-                max_completion_tokens=2000
+                max_completion_tokens=10_000
             )
+
             
-            generation_response = PopulationGenerationResponse.model_validate_json(response.content)
+            generation_response = PopulationGenerationResponse.model_validate_json(response.content or "")
             variations = self._create_variations_from_structured(generation_response.variations, base_prompt)
             
             # Add the original prompt as the first member
@@ -524,9 +531,9 @@ class LLMPopulationGenerator:
             return population[:population_size]
             
         except (ValidationError, json.JSONDecodeError) as e:
-            raise ValueError(f"Failed to parse population generation response from LLM: {str(e)}") from e
+            raise ValueError("Failed to parse population generation response from LLM") from e
         except Exception as e:
-            raise ValueError(f"LLM population generation failed: {str(e)}") from e
+            raise ValueError("LLM population generation failed") from e
     
     def _create_generation_prompt(self, base_prompt: PromptTemplate, num_variations: int, diversity_level: float) -> str:
         """Create prompt for LLM population generation"""
@@ -554,9 +561,20 @@ CONSTRAINTS:
 - Make each variation distinct and valuable
 - Ensure all variations can handle the same inputs and produce similar outputs
 
-RESPONSE:
-- ONLY VALID JSON matching the JSON SCHEMA
-- NO OTHER TEXT
+CRITICAL JSON FORMATTING REQUIREMENTS:
+- Each variation MUST be a single valid JSON string value
+- Properly escape ALL newlines as \\n (backslash-n) in the JSON
+- Escape ALL double quotes as \\" in the JSON  
+- Escape ALL backslashes as \\\\ in the JSON
+- Do NOT include literal line breaks within string values
+- The entire response must be parseable as valid JSON
+- Test your JSON mentally before responding - it must parse correctly
+
+RESPONSE FORMAT:
+- ONLY VALID JSON matching the JSON SCHEMA below
+- NO markdown code blocks (no ```json)
+- NO explanatory text before or after
+- Ensure every string is properly escaped for JSON
 
 JSON SCHEMA:
 {simple_schema(PopulationGenerationResponse)}
@@ -600,10 +618,9 @@ class LLMPromptCrossover:
                 prompt=crossover_prompt,
                 model=self.crossover_model,
                 # temperature=0.6,
-                max_completion_tokens=1500
             )
             
-            crossover_response = CrossoverResponse.model_validate_json(response.content)
+            crossover_response = CrossoverResponse.model_validate_json(response.content or "")
             
             offspring1 = crossover_response.offspring1
             offspring2 = crossover_response.offspring2
@@ -644,9 +661,20 @@ INSTRUCTIONS:
 4. Make each offspring unique and innovative
 5. Ensure both offspring maintain the core functionality
 
-RESPONSE:
-- ONLY VALID JSON matching the JSON SCHEMA
-- NO OTHER TEXT
+CRITICAL JSON FORMATTING REQUIREMENTS:
+- Both offspring1 and offspring2 MUST be valid JSON string values
+- Properly escape ALL newlines as \\n (backslash-n) in the JSON
+- Escape ALL double quotes as \\" in the JSON
+- Escape ALL backslashes as \\\\ in the JSON
+- Do NOT include literal line breaks within string values
+- The entire response must be parseable as valid JSON
+- Test your JSON mentally before responding - it must parse correctly
+
+RESPONSE FORMAT:
+- ONLY VALID JSON matching the JSON SCHEMA below
+- NO markdown code blocks (no ```json)
+- NO explanatory text before or after
+- Ensure every string is properly escaped for JSON
 
 JSON SCHEMA:
 {simple_schema(CrossoverResponse)}
@@ -810,23 +838,29 @@ class LLMGeneticOptimizer:
                 variables=variables,
             )
             total_evaluations += len(evaluations)
-            
+
+            errors = [eval for eval in evaluations if isinstance(eval, BaseException)]
+            if errors:
+                print(f"Failed to evaluate {len(errors)} individuals: {errors}")
+
+            valid_evaluations: List[FitnessEvaluation] = [eval for eval in evaluations if isinstance(eval, FitnessEvaluation)]
+
             # Check if we got any valid evaluations
             if not evaluations:
                 raise ValueError("All fitness evaluations failed. No valid individuals in population.")
             
             # Find best individual
-            best_idx = max(range(len(evaluations)), key=lambda i: evaluations[i].score)
-            best_evaluation = evaluations[best_idx]
+            best_idx = max(range(len(valid_evaluations)), key=lambda i: valid_evaluations[i].score)
+            best_evaluation = valid_evaluations[best_idx]
             
             # Log progress
-            await self._log_generation_progress(generation, best_evaluation)
+            await self._log_generation_progress(generation, best_evaluation, errors)
             if self._current_generation_stats is not None:
                 await self.progress_callback.on_generation_complete(self._current_generation_stats)
             
             # Create next generation (except for last generation)
             if generation < self.generations - 1:
-                await self._create_next_generation_llm(evaluations)
+                await self._create_next_generation_llm(valid_evaluations)
         
         # Calculate final results
         optimization_time = (datetime.now() - start_time).total_seconds()
@@ -867,7 +901,7 @@ class LLMGeneticOptimizer:
         runner: PromptRunner, 
         variables: Optional[Dict[str, Any]] = None,
         model: str,
-    ) -> List[FitnessEvaluation]:
+    ) -> List[FitnessEvaluation | BaseException]:
         """Evaluate fitness for entire population"""
         if not self.fitness_function:
             raise ValueError("No fitness function provided")
@@ -888,8 +922,7 @@ class LLMGeneticOptimizer:
         tasks = [evaluate_single(prompt) for prompt in self.population]
         evaluations = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Filter out exceptions and return only FitnessEvaluation objects
-        return [eval for eval in evaluations if isinstance(eval, FitnessEvaluation)]
+        return evaluations
     
     def _tournament_selection(self, evaluations: List[FitnessEvaluation], tournament_size: int = 3) -> PromptTemplate:
         """Select a parent using tournament selection"""
@@ -992,19 +1025,18 @@ class LLMGeneticOptimizer:
         
         return valid_results
     
-    async def _log_generation_progress(self, generation: int, best_evaluation: FitnessEvaluation) -> None:
+    async def _log_generation_progress(self, generation: int, best_evaluation: FitnessEvaluation, errors: List[BaseException]) -> None:
         """Log progress of optimization"""
-        # Calculate metrics for internal tracking (no console output)
+        # Calculate metrics for internal tracking
         avg_fitness = sum(self.fitness_scores) / len(self.fitness_scores) if self.fitness_scores else 0
         max_fitness = max(self.fitness_scores) if self.fitness_scores else 0
         
-        # Store progress data in optimizer state for potential future use
-        # This preserves the calculation logic without outputting to console
         self._current_generation_stats = {
             'generation': generation + 1,
             'best_fitness': best_evaluation.score,
             'avg_fitness': avg_fitness,
             'max_fitness': max_fitness,
             'best_prompt': best_evaluation.prompt.template,
-            'reasoning': best_evaluation.evaluation_reasoning
+            'reasoning': best_evaluation.evaluation_reasoning,
+            'errors': errors
         }

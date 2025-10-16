@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional, List, Type, TypeVar
 import openai
 import anthropic
 from pydantic import BaseModel, Field
+from google import genai
 
 from .utils.env import get_env_var
 from .tracer import UsageData
@@ -12,11 +13,12 @@ T = TypeVar('T', bound=BaseModel)
 
 ENV_OPENAI_API_KEY = get_env_var("OPENAI_API_KEY")
 ENV_ANTHROPIC_API_KEY = get_env_var("ANTHROPIC_API_KEY")
+ENV_GOOGLE_API_KEY = get_env_var("GOOGLE_API_KEY")
 
 
 class LLMResponse(BaseModel):
     """Standardized response from any LLM"""
-    content: str
+    content: Optional[str] = None
     model: str
     usage: UsageData = Field(default_factory=UsageData)  # tokens used
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -80,7 +82,7 @@ class OpenAIClient(BaseLLMClient):
 
         return LLMResponse(
             content=response.choices[0].message.content,
-            model=model,
+            model=response.model,
             usage=UsageData(
                 prompt_tokens=response.usage.prompt_tokens,
                 completion_tokens=response.usage.completion_tokens,
@@ -143,7 +145,7 @@ class AnthropicClient(BaseLLMClient):
 
         return LLMResponse(
             content=response.content[0].text,
-            model=model,
+            model=response.model,
             usage=UsageData(
                 prompt_tokens=response.usage.input_tokens,
                 completion_tokens=response.usage.output_tokens,
@@ -183,6 +185,102 @@ class AnthropicClient(BaseLLMClient):
     async def get_available_models(self) -> List[str]:
         models = await self.client.models.list(limit=1000)
         return [model.id for model in models.data]
+
+
+class GoogleAIClient(BaseLLMClient):
+    """Google AI Studio (Gemini) client implementation using google-genai SDK"""
+
+    def __init__(self, api_key: Optional[str] = None):        
+        api_key = api_key or ENV_GOOGLE_API_KEY
+        if not api_key:
+            raise ValueError("Google API key is required. Set GOOGLE_API_KEY environment variable or pass api_key parameter.")
+        
+        self.client = genai.Client(api_key=api_key)
+        self.default_model = "gemini-1.5-flash"
+
+    async def generate(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """Generate response using Google AI Studio"""
+        model_name = model or self.default_model
+        
+        # Generate content
+        response = await self.client.aio.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=genai.types.GenerateContentConfig(**kwargs) if kwargs else None,
+        )
+        
+        # Extract usage metadata if available
+        if response.usage_metadata:
+            prompt_tokens = response.usage_metadata.prompt_token_count or 0
+            completion_tokens = response.usage_metadata.candidates_token_count or 0
+            total_tokens = response.usage_metadata.total_token_count or 0
+        else:
+            prompt_tokens = 0
+            completion_tokens = 0
+            total_tokens = 0
+        
+        # Get the text content
+        content = response.text if hasattr(response, 'text') else str(response)
+        
+        return LLMResponse(
+            content=content,
+            model=model_name,
+            usage=UsageData(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            ),
+            metadata={
+                "finish_reason": response.candidates[0].finish_reason if response.candidates else None,
+                "response_id": response.response_id,
+            },
+        )
+
+    async def generate_structured(
+        self,
+        prompt: str,
+        response_model: Type[T],
+        model: Optional[str] = None,
+        **kwargs: Any,
+    ) -> T:
+        """Generate structured response using Google AI Studio"""
+        model_name = model or self.default_model
+        
+        # Get the JSON schema
+        schema = response_model.model_json_schema()
+        
+        # Create generation config for structured output
+        config = genai.types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=schema,
+            **kwargs
+        )
+        
+        # Generate content
+        response = await self.client.aio.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=config,
+        )
+        
+        # Parse the JSON response
+        import json
+        try:
+            content = response.text if hasattr(response, 'text') else str(response)
+            json_data = json.loads(content or "")
+            return response_model(**json_data)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise ValueError(f"Failed to parse structured response: {e}")
+
+    def get_available_models(self) -> List[str]:
+        """Get list of available Gemini models"""
+        models = self.client.models.list(config={'query_base': True})
+        return [model.name for model in models.page if model.name]
 
 
 class LocalLLMClient(BaseLLMClient):

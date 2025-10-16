@@ -1,5 +1,6 @@
 {
   "description": "Template for creating test cases for prompt optimization",
+  "prompt_template": "You are a helpful assistant that answers questions based on provided context. You must:\n1. Analyze the context carefully\n2. Use step-by-step reasoning\n3. Only use information from the context\n4. If the answer requires combining multiple facts, explain your reasoning\n\nContext: {{context}}\n\nQuestion: {{question}}\n\nProvide your reasoning and then the final answer.",
   "test_cases": [
     {
       "input_variables": {

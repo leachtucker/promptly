@@ -1,0 +1,71 @@
+{
+  "name": "Multi-hop reasoning test cases",
+  "prompt_template": "You are a helpful assistant that answers questions based on provided context. You must:\n1. Analyze the context carefully\n2. Use step-by-step reasoning\n3. Only use information from the context\n4. If the answer requires combining multiple facts, explain your reasoning\n\nContext: {{context}}\n\nQuestion: {{question}}\n\nProvide your reasoning and then the final answer.",
+  "test_cases": [
+  {
+    "input_variables": {
+      "context": "William Hughes Miller was born in Liverpool in 1829. Liverpool had a population of 7,402 in 1801. By 1851, Liverpool's population had grown to 376,000.",
+      "question": "William Hughes Miller was born in a city with how many inhabitants?"
+    },
+    "expected_output": "376,000",
+    "metadata": {
+      "difficulty": "hard",
+      "category": "multi-hop reasoning",
+      "reasoning_steps": 2,
+      "requires_temporal_reasoning": true
+    }
+  },
+  {
+    "input_variables": {
+      "context": "The Eiffel Tower was completed in 1889. It was designed by Gustave Eiffel. Gustave Eiffel was a French civil engineer born in Dijon in 1832. The tower stands 330 meters tall including antennas.",
+      "question": "How tall is the structure designed by the engineer born in Dijon?"
+    },
+    "expected_output": "330 meters",
+    "metadata": {
+      "difficulty": "hard",
+      "category": "multi-hop reasoning",
+      "reasoning_steps": 3,
+      "requires_temporal_reasoning": false
+    }
+  },
+  {
+    "input_variables": {
+      "context": "Tesla was founded in 2003. Elon Musk joined as chairman in 2004. The company went public in 2010. SpaceX was founded by Elon Musk in 2002.",
+      "question": "How many years after founding SpaceX did Musk join Tesla?"
+    },
+    "expected_output": "2 years",
+    "metadata": {
+      "difficulty": "hard",
+      "category": "multi-hop reasoning",
+      "reasoning_steps": 2,
+      "requires_temporal_reasoning": true
+    }
+  },
+  {
+    "input_variables": {
+      "context": "Marie Curie discovered radium in 1898. She won her first Nobel Prize in Physics in 1903. She won her second Nobel Prize in Chemistry in 1911 for her work on polonium and radium.",
+      "question": "What element did the two-time Nobel Prize winner discover in 1898?"
+    },
+    "expected_output": "radium",
+    "metadata": {
+      "difficulty": "medium",
+      "category": "multi-hop reasoning",
+      "reasoning_steps": 2,
+      "requires_temporal_reasoning": false
+    }
+  },
+  {
+    "input_variables": {
+      "context": "The iPhone was first released in 2007. Steve Jobs announced it in January of that year. The device originally sold for $499 for the 4GB model and $599 for the 8GB model. Within 74 days, Apple sold 1 million units.",
+      "question": "What was the price of the device that sold 1 million units in 74 days?"
+    },
+    "expected_output": "$499 for 4GB and $599 for 8GB",
+    "metadata": {
+      "difficulty": "medium",
+      "category": "multi-hop reasoning",
+      "reasoning_steps": 1,
+      "requires_temporal_reasoning": false
+    }
+  }
+]
+}

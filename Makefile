@@ -10,6 +10,7 @@ install:  ## Install the package
 	pip install -e .
 
 install-dev:  ## Install package with development dependencies
+	source venv/bin/activate && \
 	pip install -e .[dev,cli,ui]
 
 test:  ## Run all tests
@@ -64,11 +65,6 @@ ci:  ## Run CI pipeline locally
 	flake8 promptly/ tests/
 	mypy promptly/
 	pytest --cov=promptly --cov-report=term
-
-dev-setup:  ## Complete development setup
-	python -m venv venv
-	@echo "Activate virtual environment: source venv/bin/activate"
-	@echo "Then run: make install-dev"
 
 # Development shortcuts
 run-cli:  ## Run the CLI

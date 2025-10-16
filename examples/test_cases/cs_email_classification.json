@@ -1,0 +1,103 @@
+{
+  "name": "Customer Support Email Classification and Response",
+  "prompt_template": "You are a customer support AI assistant. Your task is to:\n1. Classify the customer's primary intent\n2. Identify the sentiment (positive, neutral, negative)\n3. Generate an empathetic and helpful response\n4. Format your response as JSON\n\nCustomer Email: {{customer_message}}\n\nRespond in this JSON format:\n{\n  \"intent\": \"<intent category>\",\n  \"sentiment\": \"<positive/neutral/negative>\",\n  \"response\": \"<your response>\"\n}",
+  "test_cases": [
+    {
+      "input_variables": {
+        "customer_message": "I've been trying to reset my password for 2 hours and nothing is working! Your system keeps saying my email doesn't exist even though I've been a customer for 3 years. This is extremely frustrating!"
+      },
+      "expected_output": {
+        "intent": "password_reset",
+        "sentiment": "negative",
+        "response_contains": ["apologize", "frustration", "help", "account"]
+      },
+      "metadata": {
+        "difficulty": "medium",
+        "category": "customer_support",
+        "requires_empathy": true,
+        "requires_json_output": true
+      }
+    },
+    {
+      "input_variables": {
+        "customer_message": "Hi! I just wanted to say thank you to Sarah from your support team. She helped me set up my account yesterday and was incredibly patient. Great service!"
+      },
+      "expected_output": {
+        "intent": "positive_feedback",
+        "sentiment": "positive",
+        "response_contains": ["thank", "Sarah", "forward", "feedback"]
+      },
+      "metadata": {
+        "difficulty": "easy",
+        "category": "customer_support",
+        "requires_empathy": true,
+        "requires_json_output": true
+      }
+    },
+    {
+      "input_variables": {
+        "customer_message": "What's the return policy for items purchased during the sale? I might need to return a shirt I bought last week."
+      },
+      "expected_output": {
+        "intent": "return_policy_inquiry",
+        "sentiment": "neutral",
+        "response_contains": ["return", "policy", "days", "receipt"]
+      },
+      "metadata": {
+        "difficulty": "easy",
+        "category": "customer_support",
+        "requires_empathy": false,
+        "requires_json_output": true
+      }
+    },
+    {
+      "input_variables": {
+        "customer_message": "I was charged twice for my last order (#12345). I see two charges of $89.99 on my credit card but only received one package. Can someone please look into this ASAP?"
+      },
+      "expected_output": {
+        "intent": "billing_issue",
+        "sentiment": "negative",
+        "response_contains": ["investigate", "duplicate", "refund", "order", "12345"]
+      },
+      "metadata": {
+        "difficulty": "hard",
+        "category": "customer_support",
+        "requires_empathy": true,
+        "requires_json_output": true
+      }
+    },
+    {
+      "input_variables": {
+        "customer_message": "Can you ship to Canada? I'm trying to order but only see US shipping options."
+      },
+      "expected_output": {
+        "intent": "shipping_inquiry",
+        "sentiment": "neutral",
+        "response_contains": ["Canada", "international", "shipping"]
+      },
+      "metadata": {
+        "difficulty": "easy",
+        "category": "customer_support",
+        "requires_empathy": false,
+        "requires_json_output": true
+      }
+    },
+    {
+      "input_variables": {
+        "customer_message": "This is my third email about my missing order. I ordered on Dec 1st, it was supposed to arrive Dec 10th, and it's now Dec 20th. No one has responded to my previous emails. Order #98765. I want a full refund immediately."
+      },
+      "expected_output": {
+        "intent": "missing_order_escalation",
+        "sentiment": "negative",
+        "response_contains": ["apologize", "sincerely", "priority", "refund", "98765", "unacceptable"]
+      },
+      "metadata": {
+        "difficulty": "hard",
+        "category": "customer_support",
+        "requires_empathy": true,
+        "requires_json_output": true,
+        "is_escalation": true
+      }
+    }
+  ]
+}

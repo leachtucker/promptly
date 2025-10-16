@@ -70,13 +70,15 @@ class RichProgressCallback(ProgressCallback):
         best_fitness = stats['best_fitness']
         best_prompt = stats['best_prompt']
         reasoning = stats['reasoning']
+        errors = stats['errors']
         
         # Store best candidate for later display
         self.best_candidates.append({
             'generation': generation,
             'fitness': best_fitness,
             'prompt': best_prompt,
-            'reasoning': reasoning
+            'reasoning': reasoning,
+            'errors': errors
         })
         
         # Update progress bar
@@ -366,7 +368,7 @@ def trace(trace_id: Optional[str], optimizer_only: bool, optimization_id: Option
 @click.option("--test-case-concurrency", default=10, help="Maximum concurrent test case executions per prompt (higher = faster)")
 @click.option("--trace", is_flag=True, help="Enable tracing", default=True)
 @click.option("--trace-optimizer", is_flag=True, help="Enable tracing of optimizer prompts with separate context", default=False)
-@click.option("--output", "-o", help="Output file to save the optimized prompt")
+@click.option("--output", "-o", help="Output file to save the optimized prompt", default="optimized_prompt.json")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt and proceed automatically")
 @click.option("--population-diversity", default=0.7, help="Diversity level for LLM population generation (0.0-1.0)")
 def optimize(
@@ -479,7 +481,6 @@ def optimize(
             
             config_table.add_row("Population Size", f"[bold green]{population_size}[/bold green]")
             config_table.add_row("Generations", f"[bold green]{generations}[/bold green]")
-            config_table.add_row("LLM-Driven", "[bold green]✅ Strictly LLM-based operations[/bold green]")
             config_table.add_row("Population Diversity", f"[bold green]{population_diversity}[/bold green]")
             config_table.add_row("Max Concurrent Evaluations", f"[bold cyan]{max_concurrent_evaluations}[/bold cyan]")
             config_table.add_row("Test Case Concurrency", f"[bold cyan]{test_case_concurrency}[/bold cyan]")
@@ -598,7 +599,6 @@ def optimize(
             results_table.add_row("⏱️ Optimization Time", f"[bold green]{result.optimization_time:.2f}s[/bold green]")
             results_table.add_row("🔄 Generations", f"[bold green]{result.generation + 1}[/bold green]")
             results_table.add_row("👥 Population Size", f"[bold green]{result.population_size}[/bold green]")
-            results_table.add_row("🤖 LLM-Driven", "[bold green]✅ Strictly LLM-based[/bold green]")
             
             console.print(results_table)
             console.print()
