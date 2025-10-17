@@ -8,6 +8,7 @@ Currently with support for Python.
 - **Prompt Templates**: Jinja2-based templating system for dynamic prompts
 - **Multi-Provider Support**: OpenAI, Anthropic, Google AI (Gemini), and extensible client architecture
 - **Built-in Tracing**: Comprehensive observability for prompt execution
+- **Genetic Optimization**: LLM-powered genetic algorithms for automated prompt improvement
 - **Async Support**: Full async/await support for high-performance applications
 - **CLI Interface**: Command-line tools for prompt management
 - **Type Safety**: Full type hints and Pydantic models
@@ -64,6 +65,28 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## Prompt Optimization
+
+Promptly includes an advanced genetic algorithm optimizer that uses LLMs to automatically improve your prompts through iterative evaluation and mutation. The optimizer can work with test cases for accuracy-based optimization or without test cases for general quality improvement.
+
+**Quick Example:**
+```bash
+# Optimize with test cases
+promptly optimize \
+  --base-prompt "Answer this question: {{question}}" \
+  --test-cases my_tests.json \
+  --population-size 10 \
+  --generations 5
+
+# Quality-based optimization (no test cases needed)
+promptly optimize \
+  --base-prompt "Write a {{genre}} story about {{character}}" \
+  --population-size 8 \
+  --generations 4
+```
+
+For complete documentation on optimization features, configuration options, and examples, see **[OPTIMIZER_README.md](OPTIMIZER_README.md)**.
 
 ## CLI Usage
 
