@@ -65,29 +65,6 @@ async def main():
 asyncio.run(main())
 ```
 
-### Using Google AI (Gemini)
-
-```python
-import asyncio
-from promptly import GoogleAIClient
-
-async def main():
-    # Initialize Google AI client (requires GOOGLE_API_KEY environment variable)
-    client = GoogleAIClient()
-    
-    # Simple generation
-    response = await client.generate(
-        prompt="Explain quantum computing in simple terms",
-        model="gemini-1.5-flash"
-    )
-    
-    print(response.content)
-
-asyncio.run(main())
-```
-
-For more examples, see `examples/google_ai_example.py`.
-
 ## CLI Usage
 
 ```bash
@@ -106,7 +83,6 @@ promptly trace
 For developers who want to contribute to or extend promptly:
 
 - **[Developer Quick Start.md](DEVELOPER_QUICKSTART.md)** - Complete development guide
-
 
 ## License
 

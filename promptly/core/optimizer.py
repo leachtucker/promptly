@@ -20,6 +20,9 @@ from .utils.ai import simple_schema
 import uuid
 
 
+
+
+
 class ProgressCallback(ABC):
     """Abstract base class for optimization progress callbacks"""
     
@@ -185,6 +188,7 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
                 prompt=evaluation_prompt,
                 model=self.evaluation_model,
                 # temperature=0.3,  # Low temperature for consistent evaluation
+                options=_get_llm_config_for_client(self.evaluation_client)
             )
 
             evaluation_response = EvaluationResponse.model_validate_json(response.content or "")
@@ -325,6 +329,7 @@ TEST RESULTS:
                 prompt=quality_prompt,
                 model=self.evaluation_model,
                 # temperature=0.3,
+                options=_get_llm_config_for_client(self.evaluation_client)
             )
             
             evaluation_response = QualityEvaluationResponse.model_validate_json(response.content or "")
@@ -428,6 +433,7 @@ class LLMPromptMutator:
                 prompt=mutation_prompt,
                 model=self.mutation_model,
                 # temperature=0.7 + mutation_strength * 0.3,  # Higher temp for more creativity
+                options=_get_llm_config_for_client(self.mutation_client)
             )
             
             mutation_response = MutationResponse.model_validate_json(response.content or "")
@@ -511,26 +517,13 @@ class LLMPopulationGenerator:
     ) -> List[PromptTemplate]:
         """Generate diverse initial population using LLM"""
         
-        # Set the configuration for the generation client
-        base_config = {
-            "max_completion_tokens": 10_000,
-            "response_format": {
-                "type": "json_object"
-            }
-        }
-        gemini_config = {
-            "max_output_tokens": 10_000,
-            "response_mime_type": "application/json"
-        }
-        config = gemini_config if isinstance(self.generation_client, GoogleAIClient) else base_config
-        
         generation_prompt = self._create_generation_prompt(base_prompt, population_size - 1, diversity_level)
         try:
             response = await self.generation_client.generate(
                 prompt=generation_prompt,
                 model=self.generation_model,
                 # temperature=0.7 + diversity_level * 0.3,
-                **config
+                options=_get_llm_config_for_client(self.generation_client)
             )
 
             generation_response = PopulationGenerationResponse.model_validate_json(response.content or "")
@@ -610,25 +603,13 @@ class LLMPromptCrossover:
     ) -> Tuple[PromptTemplate, PromptTemplate]:
         """Use LLM to intelligently combine two prompts"""
         
-
-        openai_config = {
-            "max_completion_tokens": 10_000,
-            "response_format": {
-                "type": "json_object"
-            }
-        }
-        gemini_config = {
-            "max_output_tokens": 10_000,
-            "response_mime_type": "application/json"
-        }
-        config = gemini_config if isinstance(self.crossover_client, GoogleAIClient) else openai_config
-        
         crossover_prompt = self._create_crossover_prompt(parent1, parent2)        
         try:
             response = await self.crossover_client.generate(
                 prompt=crossover_prompt,
                 model=self.crossover_model,
                 # temperature=0.6,
+                options=_get_llm_config_for_client(self.crossover_client)
             )
             
             crossover_response = CrossoverResponse.model_validate_json(response.content or "")
@@ -1042,4 +1023,22 @@ class LLMGeneticOptimizer:
             'best_prompt': best_evaluation.prompt.template,
             'reasoning': best_evaluation.evaluation_reasoning,
             'errors': errors
+        }
+
+def _get_llm_config_for_client(client: BaseLLMClient) -> Dict[str, Any]:
+    """
+    Get the appropriate LLM configuration based on client type.
+    """
+    if isinstance(client, GoogleAIClient):
+        return {
+            "max_output_tokens": 10_000,
+            "response_mime_type": "application/json"
+        }
+    else:
+        # Default config for OpenAI and Anthropic clients
+        return {
+            "max_completion_tokens": 10_000,
+            "response_format": {
+                "type": "json_object"
+            }
         }
