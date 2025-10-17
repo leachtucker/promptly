@@ -1,8 +1,9 @@
+
+
 """
 Command-line interface for promptly
 """
-
-from rich.console import Console
+from rich.console import Console  
 from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TaskID
@@ -13,9 +14,10 @@ import click
 import asyncio
 import json
 from typing import Optional, List, Dict, Any
+
 from ..core.runner import PromptRunner
 from ..core.tracer import Tracer
-from ..core.clients import OpenAIClient, AnthropicClient
+from ..core.clients import OpenAIClient, AnthropicClient, GoogleAIClient, BaseLLMClient
 from ..core.optimizer import (
     LLMGeneticOptimizer,
     LLMComprehensiveFitnessFunction,
@@ -24,6 +26,8 @@ from ..core.optimizer import (
     OptimizationResult,
 )
 from ..core.templates import PromptTemplate
+
+
 
 
 class RichProgressCallback(ProgressCallback):
@@ -357,9 +361,8 @@ def trace(trace_id: Optional[str], optimizer_only: bool, optimization_id: Option
 @click.option("--test-cases", "-t", help="Path to JSON file containing test cases (optional for quality-based optimization)")
 @click.option("--population-size", default=10, help="Population size for genetic algorithm")
 @click.option("--generations", default=5, help="Number of generations to run")
-@click.option("--model", "-m", default="gpt-3.5-turbo", help="Model to use for prompt execution")
-@click.option("--eval-model", default="gpt-5-mini-2025-08-07", help="Model to use for evaluation")
-@click.option("--provider", default="openai", type=click.Choice(["openai", "anthropic"]), help="LLM provider")
+@click.option("--model", "-m", default="openai/gpt-3.5-turbo", help="Model to use for prompt execution, format: provider/model")
+@click.option("--eval-model", default="openai/gpt-5-mini-2025-08-07", help="Model to use for evaluation, format: provider/model")
 @click.option("--api-key", help="API key for the provider")
 @click.option("--mutation-rate", default=0.3, help="Mutation rate (0.0-1.0)")
 @click.option("--crossover-rate", default=0.7, help="Crossover rate (0.0-1.0)")
@@ -378,7 +381,6 @@ def optimize(
     generations: int,
     model: str,
     eval_model: str,
-    provider: str,
     api_key: Optional[str],
     mutation_rate: float,
     crossover_rate: float,
@@ -392,6 +394,9 @@ def optimize(
     population_diversity: float,
 ) -> None:
     """Optimize a prompt using LLM-powered genetic algorithm (strictly LLM-driven)"""
+
+    eval_model_provider, eval_model_name = eval_model.split("/")
+    model_provider, model_name = model.split("/")
     
     async def _run_optimization():
         try:
@@ -418,15 +423,28 @@ def optimize(
             else:
                 click.echo("No test cases provided - using quality-based optimization")
             
-            # Initialize clients
-            if provider == "openai":
-                main_client = OpenAIClient(api_key=api_key)
+            # Initialize eval clients
+            eval_client: BaseLLMClient
+            if eval_model_provider == "openai":
                 eval_client = OpenAIClient(api_key=api_key)
-            elif provider == "anthropic":
-                main_client = AnthropicClient(api_key=api_key)
+            elif eval_model_provider == "anthropic":
                 eval_client = AnthropicClient(api_key=api_key)
+            elif eval_model_provider == "google":
+                eval_client = GoogleAIClient(api_key=api_key)
             else:
-                click.echo(f"Unsupported provider: {provider}")
+                click.echo(f"Unsupported provider: {eval_model_provider}")
+                return
+
+            # Initialize main client
+            main_client: BaseLLMClient
+            if model_provider == "openai":
+                main_client = OpenAIClient(api_key=api_key)
+            elif model_provider == "anthropic":
+                main_client = AnthropicClient(api_key=api_key)
+            elif model_provider == "google":
+                main_client = GoogleAIClient(api_key=api_key)
+            else:
+                click.echo(f"Unsupported provider: {model_provider}")
                 return
             
             # Initialize runner (only needed if test cases are provided)
@@ -436,11 +454,11 @@ def optimize(
             # Create base prompt template
             base_template = PromptTemplate(template=base_prompt, name="base_prompt")
             
-            fitness_function = LLMComprehensiveFitnessFunction(eval_client, eval_model)
+            fitness_function = LLMComprehensiveFitnessFunction(eval_client, eval_model_name)
 
             # Initialize optimizer (callback will be set later)
             optimizer = LLMGeneticOptimizer(
-                eval_model=eval_model,
+                eval_model=eval_model_name,
                 population_size=population_size,
                 generations=generations,
                 fitness_function=fitness_function,
@@ -575,7 +593,7 @@ def optimize(
                 optimizer.progress_callback = progress_callback
                 
                 # Start optimization
-                result = await optimizer.optimize(runner, base_template, test_cases_list, model=eval_model)
+                result = await optimizer.optimize(runner=runner, base_prompt=base_template, model=model_name, test_cases=test_cases_list)
             
             # Display results with celebration
             console.print()

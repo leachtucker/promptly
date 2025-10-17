@@ -3,41 +3,9 @@ Environment variable loading utilities
 """
 
 import os
-from pathlib import Path
 from typing import Optional
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None
-
-
-def load_env_file(env_file: Optional[str] = None, override: bool = False) -> bool:
-    """Load environment variables from a .env file
-    
-    Args:
-        env_file: Path to the .env file. If None, searches for .env in current and parent directories
-        override: Whether to override existing environment variables
-        
-    Returns:
-        True if .env file was loaded successfully, False otherwise
-    """
-    if load_dotenv is None:
-        raise ImportError("python-dotenv is required. Install it with: pip install python-dotenv")
-    
-    if env_file is None:
-        # Search for .env file in current directory and parent directories
-        current_dir = Path.cwd()
-        for directory in [current_dir] + list(current_dir.parents):
-            env_path = directory / ".env"
-            if env_path.exists():
-                env_file = str(env_path)
-                break
-        else:
-            return False  # No .env file found
-    
-    # Load the .env file
-    return load_dotenv(env_file, override=override)
+from dotenv import load_dotenv
 
 
 def get_env_var(key: str, default: Optional[str] = None, required: bool = False) -> Optional[str]:
@@ -68,11 +36,13 @@ def load_env_for_promptly() -> None:
     This function loads common API keys and configuration for promptly:
     - OPENAI_API_KEY
     - ANTHROPIC_API_KEY
+    - GEMINI_API_KEY
     - PROMPTLY_DB_PATH (for tracer database)
     - PROMPTLY_LOG_LEVEL
     - PROMPTLY_TRACING_ENABLED
     """
-    load_env_file()
+    
+    load_dotenv()
     
     # Set default values for promptly-specific variables if not already set
     if not os.getenv("PROMPTLY_DB_PATH"):

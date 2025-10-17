@@ -345,7 +345,12 @@ class TestLLMGeneticOptimizer:
         from promptly.core.runner import PromptRunner
         mock_runner = PromptRunner(client=mock_eval_client, tracer=tracer_with_temp_db)
         
-        result = await optimizer.optimize(mock_runner, base_prompt, test_cases, model="gpt-4")
+        result = await optimizer.optimize(
+            runner=mock_runner, 
+            base_prompt=base_prompt, 
+            test_cases=test_cases, 
+            model="gpt-4"
+        )
         
         assert isinstance(result, OptimizationResult)
         assert result.best_prompt is not None
@@ -406,7 +411,12 @@ class TestLLMGeneticOptimizer:
         from promptly.core.runner import PromptRunner
         mock_runner = PromptRunner(client=mock_eval_client)
         
-        result = await optimizer.optimize(mock_runner, base_prompt, test_cases=None, model="gpt-4")
+        result = await optimizer.optimize(
+            runner=mock_runner, 
+            base_prompt=base_prompt, 
+            test_cases=None, 
+            model="gpt-4"
+        )
         
         assert isinstance(result, OptimizationResult)
         assert result.best_prompt is not None

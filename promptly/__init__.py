@@ -13,6 +13,7 @@ load_env_for_promptly()
 from .core.runner import PromptRunner
 from .core.templates import PromptTemplate, PromptMetadata
 from .core.clients import BaseLLMClient, LLMResponse, OpenAIClient, AnthropicClient
+from .core.client_types import OpenAIOptions, AnthropicOptions, GoogleAIOptions
 from .core.tracer import Tracer, TraceRecord
 from .core.optimizer import (
     LLMGeneticOptimizer,
@@ -30,6 +31,9 @@ __all__ = [
     "OpenAIClient",
     "AnthropicClient",
     "LLMResponse",
+    "OpenAIOptions",
+    "AnthropicOptions",
+    "GoogleAIOptions",
     "Tracer",
     "TraceRecord",
     "LLMGeneticOptimizer",

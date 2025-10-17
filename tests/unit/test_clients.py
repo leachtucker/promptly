@@ -63,7 +63,9 @@ class TestOpenAIClient:
         # Create client and test
         client = OpenAIClient(api_key="test-key")
         response = await client.generate(
-            prompt="Test prompt", model="gpt-3.5-turbo", temperature=0.7, max_tokens=100
+            prompt="Test prompt", 
+            model="gpt-3.5-turbo", 
+            options={"temperature": 0.7, "max_tokens": 100}
         )
 
         # Verify response
@@ -183,8 +185,7 @@ class TestAnthropicClient:
         response = await client.generate(
             prompt="Test prompt",
             model="claude-3-sonnet-20240229",
-            temperature=0.7,
-            max_tokens=100,
+            options={"temperature": 0.7, "max_tokens": 100},
         )
 
         # Verify response
@@ -280,7 +281,8 @@ class TestGoogleAIClient:
 
     def test_google_ai_client_initialization_without_key(self):
         """Test Google AI client initialization without API key raises error"""
-        with patch.dict('sys.modules', {'google': MagicMock(), 'google.genai': MagicMock()}):
+        # Mock the environment variable to ensure it's not set
+        with patch('promptly.core.clients.ENV_GEMINI_API_KEY', None):
             with pytest.raises(ValueError, match="Google API key is required"):
                 GoogleAIClient()
 
@@ -332,11 +334,9 @@ class TestGoogleAIClient:
             assert isinstance(response, LLMResponse)
             assert response.content == "Test response"
             assert response.model == "gemini-1.5-flash"
-            assert response.usage == UsageData(
-                prompt_tokens=10,
-                completion_tokens=5,
-                total_tokens=15,
-            )
+            assert response.usage.prompt_tokens == 10
+            assert response.usage.completion_tokens == 5
+            assert response.usage.total_tokens == 15
 
     @pytest.mark.asyncio
     async def test_google_ai_client_generate_with_defaults(self):
@@ -437,6 +437,6 @@ class TestGoogleAIClient:
             # Manually set the client.client to our mock
             client.client = mock_client_instance
 
-            # Test error handling
+            # Test error handling - match regex pattern properly
             with pytest.raises(Exception, match="API Error"):
                 await client.generate(prompt="Test prompt")

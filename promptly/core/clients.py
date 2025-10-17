@@ -1,4 +1,8 @@
+"""
+LLM clients for Promptly
+"""
 
+from .utils.env import load_env_for_promptly
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, Type, TypeVar
 import openai
@@ -8,13 +12,17 @@ from google import genai
 
 from .utils.env import get_env_var
 from .tracer import UsageData
+from .client_types import OpenAIOptions, AnthropicOptions, GoogleAIOptions
 
 T = TypeVar('T', bound=BaseModel)
 
+
+load_env_for_promptly()
 ENV_OPENAI_API_KEY = get_env_var("OPENAI_API_KEY")
 ENV_ANTHROPIC_API_KEY = get_env_var("ANTHROPIC_API_KEY")
-ENV_GOOGLE_API_KEY = get_env_var("GOOGLE_API_KEY")
+ENV_GEMINI_API_KEY = get_env_var("GEMINI_API_KEY")
 
+print(ENV_GEMINI_API_KEY)
 
 class LLMResponse(BaseModel):
     """Standardized response from any LLM"""
@@ -25,18 +33,26 @@ class LLMResponse(BaseModel):
 
 
 class BaseLLMClient(ABC):
-    """Abstract base class for LLM clients"""
+    """Abstract base class for LLM clients with provider-agnostic interface"""
 
     @abstractmethod
     async def generate(
         self,
         prompt: str,
         model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs: Any,
+        options: Optional[Dict[str, Any]] = None,
     ) -> LLMResponse:
-        """Generate response from LLM"""
+        """
+        Generate response from LLM.
+        
+        Args:
+            prompt: The input prompt/instruction
+            model: Model identifier (provider-specific)
+            options: Provider-specific options dict
+            
+        Returns:
+            LLMResponse: Standardized response object
+        """
         pass
 
     @abstractmethod
@@ -45,11 +61,20 @@ class BaseLLMClient(ABC):
         prompt: str,
         response_model: Type[T],
         model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs: Any,
+        options: Optional[Dict[str, Any]] = None,
     ) -> T:
-        """Generate structured response from LLM"""
+        """
+        Generate structured response from LLM.
+        
+        Args:
+            prompt: The input prompt/instruction
+            response_model: Pydantic model for structured output
+            model: Model identifier (provider-specific)
+            options: Provider-specific options dict
+            
+        Returns:
+            T: Instance of response_model with parsed data
+        """
         pass
 
     @abstractmethod
@@ -59,7 +84,13 @@ class BaseLLMClient(ABC):
 
 
 class OpenAIClient(BaseLLMClient):
-    """OpenAI client implementation"""
+    """
+    OpenAI client implementation.
+    
+    Supports all models from OpenAI's chat completions API.
+    For full API documentation, see:
+    https://platform.openai.com/docs/api-reference/chat/create
+    """
 
     def __init__(self, api_key: Optional[str] = None):
         self.client = openai.AsyncOpenAI(api_key=api_key or ENV_OPENAI_API_KEY)
@@ -69,15 +100,29 @@ class OpenAIClient(BaseLLMClient):
         self,
         prompt: str,
         model: Optional[str] = None,
-        **kwargs: Any,
+        options: Optional[OpenAIOptions] = None,
     ) -> LLMResponse:
-        """Generate response using OpenAI"""
+        """
+        Generate response using OpenAI's Chat Completions API.
+        
+        Args:
+            prompt: The input prompt/instruction
+            model: Model name (default: gpt-3.5-turbo)
+            options: OpenAI-specific options (TypedDict from openai.types)
+                    Full type: openai.types.chat.CompletionCreateParamsBase
+                    Supports all parameters from OpenAI's chat.completions.create()
+                    including temperature, max_tokens, top_p, frequency_penalty,
+                    presence_penalty, stop, response_format, tools, etc.
+        
+        Returns:
+            LLMResponse: Standardized response object
+        """
         model = model or self.default_model
 
         response = await self.client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": prompt}],
-            **kwargs,
+            **(options or {}),  # type: ignore[arg-type]
         )
 
         return LLMResponse(
@@ -99,16 +144,28 @@ class OpenAIClient(BaseLLMClient):
         prompt: str,
         response_model: Type[T],
         model: Optional[str] = None,
-        **kwargs: Any,
+        options: Optional[OpenAIOptions] = None,
     ) -> T:
-        """Generate structured response using OpenAI"""
+        """
+        Generate structured response using OpenAI's Structured Outputs.
+        
+        Args:
+            prompt: The input prompt/instruction
+            response_model: Pydantic model for structured output
+            model: Model name (default: gpt-3.5-turbo)
+            options: OpenAI-specific options (TypedDict from openai.types)
+                    Note: response_format is set automatically to response_model
+        
+        Returns:
+            T: Instance of response_model with parsed data
+        """
         model = model or self.default_model
 
         response = await self.client.beta.chat.completions.parse(
             model=model,
             messages=[{"role": "system", "content": prompt}],
             response_format=response_model,
-            **kwargs,
+            **(options or {}),  # type: ignore[arg-type]
         )
 
         parsed = response.choices[0].message.parsed
@@ -122,7 +179,13 @@ class OpenAIClient(BaseLLMClient):
 
 
 class AnthropicClient(BaseLLMClient):
-    """Anthropic client implementation"""
+    """
+    Anthropic client implementation.
+    
+    Supports all Claude models from Anthropic's messages API.
+    For full API documentation, see:
+    https://docs.anthropic.com/en/api/messages
+    """
 
     def __init__(self, api_key: Optional[str] = None):
         self.client = anthropic.AsyncAnthropic(api_key=api_key or ENV_ANTHROPIC_API_KEY)
@@ -132,15 +195,42 @@ class AnthropicClient(BaseLLMClient):
         self,
         prompt: str,
         model: Optional[str] = None,
-        **kwargs: Any,
+        options: Optional[AnthropicOptions] = None,
     ) -> LLMResponse:
-        """Generate response using Anthropic"""
+        """
+        Generate response using Anthropic's Messages API.
+        
+        Args:
+            prompt: The input prompt/instruction (used as system message)
+            model: Model name (default: claude-3-sonnet-20240229)
+            options: Anthropic-specific options (TypedDict from anthropic.types)
+                    Full type: anthropic.types.MessageCreateParamsBase
+                    Supports all parameters from Anthropic's messages.create()
+                    including max_tokens (required), messages (required), 
+                    temperature, top_p, top_k, stop_sequences, tools, etc.
+        
+        Returns:
+            LLMResponse: Standardized response object
+        
+        Note:
+            The Anthropic API requires 'max_tokens' and 'messages' parameters.
+            If not provided in options, sensible defaults will be used:
+            - max_tokens: 1024
+            - messages: [] (will be populated from prompt)
+        """
         model = model or self.default_model
+        opts: Dict[str, Any] = dict(options or {})
+        
+        # Anthropic requires max_tokens and messages
+        if "max_tokens" not in opts:
+            opts["max_tokens"] = 1024
+        if "messages" not in opts:
+            opts["messages"] = []
 
         response = await self.client.messages.create(
             model=model,
             system=prompt,
-            **kwargs,
+            **opts,  # type: ignore[arg-type]
         )
 
         return LLMResponse(
@@ -160,10 +250,32 @@ class AnthropicClient(BaseLLMClient):
         prompt: str,
         response_model: Type[T],
         model: Optional[str] = None,
-        **kwargs: Any,
+        options: Optional[AnthropicOptions] = None,
     ) -> T:
-        """Generate structured response using Anthropic"""
+        """
+        Generate structured response using Anthropic.
+        
+        Args:
+            prompt: The input prompt/instruction
+            response_model: Pydantic model for structured output
+            model: Model name (default: claude-3-sonnet-20240229)
+            options: Anthropic-specific options (TypedDict from anthropic.types)
+        
+        Returns:
+            T: Instance of response_model with parsed data
+            
+        Note:
+            Anthropic doesn't have native structured output support yet,
+            so this method uses JSON schema prompting and parsing.
+        """
         model = model or self.default_model
+        opts: Dict[str, Any] = dict(options or {})
+        
+        # Anthropic requires max_tokens and messages
+        if "max_tokens" not in opts:
+            opts["max_tokens"] = 1024
+        if "messages" not in opts:
+            opts["messages"] = []
 
         # Anthropic doesn't have native structured output, so we use JSON mode
         json_prompt = f"{prompt}\n\nPlease respond with valid JSON matching this schema: {response_model.model_json_schema()}"
@@ -171,7 +283,7 @@ class AnthropicClient(BaseLLMClient):
         response = await self.client.messages.create(
             model=model,
             system=json_prompt,
-            **kwargs,
+            **opts,  # type: ignore[arg-type]
         )
 
         # Parse the JSON response
@@ -188,12 +300,18 @@ class AnthropicClient(BaseLLMClient):
 
 
 class GoogleAIClient(BaseLLMClient):
-    """Google AI Studio (Gemini) client implementation using google-genai SDK"""
+    """
+    Google AI Studio (Gemini) client implementation.
+    
+    Supports all Gemini models from Google's Generative AI API.
+    For full API documentation, see:
+    https://ai.google.dev/api/generate-content
+    """
 
     def __init__(self, api_key: Optional[str] = None):        
-        api_key = api_key or ENV_GOOGLE_API_KEY
+        api_key = api_key or ENV_GEMINI_API_KEY
         if not api_key:
-            raise ValueError("Google API key is required. Set GOOGLE_API_KEY environment variable or pass api_key parameter.")
+            raise ValueError("Google API key is required. Set GEMINI_API_KEY environment variable or pass api_key parameter.")
         
         self.client = genai.Client(api_key=api_key)
         self.default_model = "gemini-1.5-flash"
@@ -202,16 +320,33 @@ class GoogleAIClient(BaseLLMClient):
         self,
         prompt: str,
         model: Optional[str] = None,
-        **kwargs: Any,
+        options: Optional[GoogleAIOptions] = None,
     ) -> LLMResponse:
-        """Generate response using Google AI Studio"""
-        model_name = model or self.default_model
+        """
+        Generate response using Google AI Studio's generate_content API.
         
-        # Generate content
+        Args:
+            prompt: The input prompt/instruction
+            model: Model name (default: gemini-1.5-flash)
+            options: Google AI-specific options (TypedDict from google.genai.types)
+                    Full type: google.genai.types.GenerateContentConfigDict
+                    Supports all parameters from Google's generate_content()
+                    including temperature, max_output_tokens, top_p, top_k,
+                    candidate_count, stop_sequences, safety_settings, tools, etc.
+        
+        Returns:
+            LLMResponse: Standardized response object
+        """
+        model_name = model or self.default_model
+
+        # Convert TypedDict to GenerateContentConfig if options provided
+        config = genai.types.GenerateContentConfig(**options) if options else None  # type: ignore[arg-type]
+
+        # Generate content - use async API
         response = await self.client.aio.models.generate_content(
             model=model_name,
             contents=prompt,
-            config=genai.types.GenerateContentConfig(**kwargs) if kwargs else None,
+            config=config,
         )
         
         # Extract usage metadata if available
@@ -246,20 +381,33 @@ class GoogleAIClient(BaseLLMClient):
         prompt: str,
         response_model: Type[T],
         model: Optional[str] = None,
-        **kwargs: Any,
+        options: Optional[GoogleAIOptions] = None,
     ) -> T:
-        """Generate structured response using Google AI Studio"""
+        """
+        Generate structured response using Google AI Studio.
+        
+        Args:
+            prompt: The input prompt/instruction
+            response_model: Pydantic model for structured output
+            model: Model name (default: gemini-1.5-flash)
+            options: Google AI-specific options (TypedDict from google.genai.types)
+                    Note: response_mime_type and response_schema are set automatically
+        
+        Returns:
+            T: Instance of response_model with parsed data
+        """
         model_name = model or self.default_model
+        opts: Dict[str, Any] = dict(options or {})
         
         # Get the JSON schema
         schema = response_model.model_json_schema()
         
+        # Override response format settings for structured output
+        opts["response_mime_type"] = "application/json"
+        opts["response_schema"] = schema
+        
         # Create generation config for structured output
-        config = genai.types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=schema,
-            **kwargs
-        )
+        config = genai.types.GenerateContentConfig(**opts)  # type: ignore[arg-type]
         
         # Generate content
         response = await self.client.aio.models.generate_content(
@@ -284,7 +432,12 @@ class GoogleAIClient(BaseLLMClient):
 
 
 class LocalLLMClient(BaseLLMClient):
-    """Client for local models (Ollama, etc.)"""
+    """
+    Client for local models (Ollama, etc.).
+    
+    This is a placeholder implementation for local model support.
+    Full implementation would integrate with Ollama API or similar.
+    """
 
     def __init__(self, base_url: str = "http://localhost:11434"):
         self.base_url = base_url
@@ -294,11 +447,24 @@ class LocalLLMClient(BaseLLMClient):
         self,
         prompt: str,
         model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs: Any,
+        options: Optional[Dict[str, Any]] = None,
     ) -> LLMResponse:
-        """Generate response using local model"""
+        """
+        Generate response using local model.
+        
+        Args:
+            prompt: The input prompt/instruction
+            model: Model name (default: llama2)
+            options: Local model-specific options (dict)
+                    Would support Ollama API parameters when implemented
+        
+        Returns:
+            LLMResponse: Standardized response object
+            
+        Note:
+            This is a placeholder implementation. Full Ollama integration
+            would be implemented here.
+        """
         # Placeholder - would implement actual Ollama API calls
         return LLMResponse(
             content=f"Local response for: {prompt[:50]}...",
@@ -311,11 +477,24 @@ class LocalLLMClient(BaseLLMClient):
         prompt: str,
         response_model: Type[T],
         model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        **kwargs: Any,
+        options: Optional[Dict[str, Any]] = None,
     ) -> T:
-        """Generate structured response using local model"""
+        """
+        Generate structured response using local model.
+        
+        Args:
+            prompt: The input prompt/instruction
+            response_model: Pydantic model for structured output
+            model: Model name (default: llama2)
+            options: Local model-specific options (dict)
+        
+        Returns:
+            T: Instance of response_model with parsed data
+            
+        Note:
+            This is not yet implemented. Would use Ollama's JSON mode
+            or similar when implemented.
+        """
         # TODO: Implement this
         raise NotImplementedError("LocalLLMClient does not support structured output")
 

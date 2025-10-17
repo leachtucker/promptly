@@ -12,7 +12,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, ValidationError
 
 from .templates import PromptTemplate
-from .clients import BaseLLMClient, OpenAIClient, AnthropicClient
+from .clients import BaseLLMClient, OpenAIClient, AnthropicClient, GoogleAIClient
 from .runner import PromptRunner
 from .tracer import Tracer
 from .utils.ai import simple_schema
@@ -194,7 +194,7 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
             reasoning = evaluation_response.reasoning
             
         except (ValidationError, json.JSONDecodeError) as e:
-            raise ValueError("Failed to parse evaluation response") from e
+            raise ValueError(f"Failed to parse evaluation response: {e}") from e
         
         return FitnessEvaluation(
             prompt=prompt,
@@ -511,17 +511,28 @@ class LLMPopulationGenerator:
     ) -> List[PromptTemplate]:
         """Generate diverse initial population using LLM"""
         
-        generation_prompt = self._create_generation_prompt(base_prompt, population_size - 1, diversity_level)
+        # Set the configuration for the generation client
+        base_config = {
+            "max_completion_tokens": 10_000,
+            "response_format": {
+                "type": "json_object"
+            }
+        }
+        gemini_config = {
+            "max_output_tokens": 10_000,
+            "response_mime_type": "application/json"
+        }
+        config = gemini_config if isinstance(self.generation_client, GoogleAIClient) else base_config
         
+        generation_prompt = self._create_generation_prompt(base_prompt, population_size - 1, diversity_level)
         try:
             response = await self.generation_client.generate(
                 prompt=generation_prompt,
                 model=self.generation_model,
                 # temperature=0.7 + diversity_level * 0.3,
-                max_completion_tokens=10_000
+                **config
             )
 
-            
             generation_response = PopulationGenerationResponse.model_validate_json(response.content or "")
             variations = self._create_variations_from_structured(generation_response.variations, base_prompt)
             
@@ -539,9 +550,6 @@ class LLMPopulationGenerator:
         """Create prompt for LLM population generation"""
         return f"""
 You are an expert prompt engineer. Create {num_variations} diverse variations of the following prompt template.
-
-ORIGINAL PROMPT:
-{base_prompt.template}
 
 DIVERSITY LEVEL: {diversity_level} (0.0 = subtle variations, 1.0 = very diverse)
 
@@ -561,26 +569,17 @@ CONSTRAINTS:
 - Make each variation distinct and valuable
 - Ensure all variations can handle the same inputs and produce similar outputs
 
-CRITICAL JSON FORMATTING REQUIREMENTS:
-- Each variation MUST be a single valid JSON string value
-- Properly escape ALL newlines as \\n (backslash-n) in the JSON
-- Escape ALL double quotes as \\" in the JSON  
-- Escape ALL backslashes as \\\\ in the JSON
-- Do NOT include literal line breaks within string values
-- The entire response must be parseable as valid JSON
-- Test your JSON mentally before responding - it must parse correctly
-
 RESPONSE FORMAT:
-- ONLY VALID JSON matching the JSON SCHEMA below
-- NO markdown code blocks (no ```json)
-- NO explanatory text before or after
-- Ensure every string is properly escaped for JSON
+- ONLY VALID JSON matching the example response below
+- Test your JSON mentally before responding - it must parse correctly
+- The entire response must be parseable as valid JSON
 
 JSON SCHEMA:
 {simple_schema(PopulationGenerationResponse)}
+
+ORIGINAL PROMPT:
+{base_prompt.template}
 """
-    
-    
     
     def _create_variations_from_structured(self, variations: List[str], base_prompt: PromptTemplate) -> List[PromptTemplate]:
         """Create PromptTemplate objects from structured response variations"""
@@ -611,8 +610,20 @@ class LLMPromptCrossover:
     ) -> Tuple[PromptTemplate, PromptTemplate]:
         """Use LLM to intelligently combine two prompts"""
         
-        crossover_prompt = self._create_crossover_prompt(parent1, parent2)
+
+        openai_config = {
+            "max_completion_tokens": 10_000,
+            "response_format": {
+                "type": "json_object"
+            }
+        }
+        gemini_config = {
+            "max_output_tokens": 10_000,
+            "response_mime_type": "application/json"
+        }
+        config = gemini_config if isinstance(self.crossover_client, GoogleAIClient) else openai_config
         
+        crossover_prompt = self._create_crossover_prompt(parent1, parent2)        
         try:
             response = await self.crossover_client.generate(
                 prompt=crossover_prompt,
@@ -778,22 +789,14 @@ class LLMGeneticOptimizer:
         
     async def optimize(
         self,
+        *,
         runner: PromptRunner,
         base_prompt: PromptTemplate,
+        model: str,
         test_cases: Optional[List[PromptTestCase]] = None,
         variables: Optional[Dict[str, Any]] = None,
-        model: Optional[str] = None,
     ) -> OptimizationResult:
         """Run the LLM-powered genetic optimization process"""
-
-        # Set default model if not provided
-        if not model:
-            if isinstance(runner.client, OpenAIClient):
-                model = "gpt-5-mini-2025-08-07"
-            elif isinstance(runner.client, AnthropicClient):
-                model = "claude-3-5-haiku-latest"
-            else:
-                raise ValueError("No model provided and no default model found")
         
         start_time = datetime.now()
         total_evaluations = 0
@@ -846,7 +849,7 @@ class LLMGeneticOptimizer:
             valid_evaluations: List[FitnessEvaluation] = [eval for eval in evaluations if isinstance(eval, FitnessEvaluation)]
 
             # Check if we got any valid evaluations
-            if not evaluations:
+            if not valid_evaluations:
                 raise ValueError("All fitness evaluations failed. No valid individuals in population.")
             
             # Find best individual
