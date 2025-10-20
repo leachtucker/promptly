@@ -22,7 +22,6 @@ ENV_OPENAI_API_KEY = get_env_var("OPENAI_API_KEY")
 ENV_ANTHROPIC_API_KEY = get_env_var("ANTHROPIC_API_KEY")
 ENV_GEMINI_API_KEY = get_env_var("GEMINI_API_KEY")
 
-print(ENV_GEMINI_API_KEY)
 
 class LLMResponse(BaseModel):
     """Standardized response from any LLM"""
