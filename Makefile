@@ -28,11 +28,12 @@ test-verbose:  ## Run tests with verbose output
 	pytest -v -s
 
 lint:  ## Run linting
-	flake8 promptly/ tests/
-	black --check promptly/ tests/
+	ruff check promptly/ tests/
+	ruff format --check promptly/ tests/
 
 format:  ## Format code
-	black promptly/ tests/
+	ruff format promptly/ tests/
+	ruff check --fix promptly/ tests/
 
 type-check:  ## Run type checking
 	mypy promptly/
@@ -60,8 +61,8 @@ check: lint type-check test  ## Run all checks (lint, type-check, test)
 
 ci:  ## Run CI pipeline locally
 	uv pip install -e .[dev,cli,ui]
-	black --check promptly/ tests/
-	flake8 promptly/ tests/
+	ruff format --check promptly/ tests/
+	ruff check promptly/ tests/
 	mypy promptly/
 	pytest --cov=promptly --cov-report=term
 

@@ -37,8 +37,7 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
+    "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
 cli = [
@@ -57,3 +56,35 @@ promptly = "promptly.cli.main:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["promptly*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # unused imports in __init__.py
+
+[tool.ruff.format]
+# Use double quotes for strings (like Black)
+quote-style = "double"
+# Indent with spaces (like Black)
+indent-style = "space"
+# Respect magic trailing comma (like Black)
+skip-magic-trailing-comma = false
+# Use Unix line endings
+line-ending = "auto"

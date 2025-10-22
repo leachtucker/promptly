@@ -2,9 +2,9 @@
 Tests for Tracer and TraceRecord
 """
 
-import pytest
 import sqlite3
 from datetime import datetime
+
 from promptly.core.tracer import Tracer, TraceRecord, UsageData
 
 
@@ -74,9 +74,7 @@ class TestTracer:
         # Verify database schema was created
         with sqlite3.connect(temp_db) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='traces'"
-            )
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='traces'")
             assert cursor.fetchone() is not None
 
     def test_tracer_log_record(self, tracer_with_temp_db, sample_trace_record):
@@ -109,9 +107,7 @@ class TestTracer:
         tracer = tracer_with_temp_db
 
         # Log multiple records
-        record1 = TraceRecord(
-            prompt_name="test1", model="gpt-3.5-turbo", response="Response 1"
-        )
+        record1 = TraceRecord(prompt_name="test1", model="gpt-3.5-turbo", response="Response 1")
         record2 = TraceRecord(prompt_name="test2", model="gpt-4", response="Response 2")
 
         tracer.log(record1)
@@ -130,9 +126,7 @@ class TestTracer:
         tracer = tracer_with_temp_db
 
         # Log records with different models
-        record1 = TraceRecord(
-            prompt_name="test1", model="gpt-3.5-turbo", response="Response 1"
-        )
+        record1 = TraceRecord(prompt_name="test1", model="gpt-3.5-turbo", response="Response 1")
         record2 = TraceRecord(prompt_name="test2", model="gpt-4", response="Response 2")
 
         tracer.log(record1)

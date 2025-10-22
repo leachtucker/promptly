@@ -2,7 +2,6 @@
 Tests for LLMResponse Pydantic model
 """
 
-import pytest
 from promptly.core.clients import LLMResponse
 from promptly.core.tracer import UsageData
 

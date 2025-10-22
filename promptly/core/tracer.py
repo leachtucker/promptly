@@ -1,19 +1,25 @@
-import sqlite3
 import json
+import sqlite3
 from datetime import datetime
-from typing import Dict, Any, Optional, List
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
+
 from .utils.env import get_env_var
+
 
 class UsageData(BaseModel):
     """Trace statistics"""
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
 
+
 class TraceRecord(BaseModel):
     """Single trace record"""
+
     id: Optional[int] = None
     prompt_name: str = ""
     prompt_template: str = ""
@@ -31,11 +37,11 @@ class TraceRecord(BaseModel):
         """Create TraceRecord from database row with proper type conversion"""
         # Convert timestamp
         timestamp = datetime.fromisoformat(row["timestamp"]) if row["timestamp"] else datetime.now()
-        
+
         # Parse JSON fields safely
         usage = UsageData.model_validate_json(row["usage"]) if row["usage"] else UsageData()
         metadata = json.loads(row["metadata"]) if row["metadata"] else {}
-        
+
         return cls(
             id=row["id"],
             prompt_name=row["prompt_name"],
@@ -47,9 +53,9 @@ class TraceRecord(BaseModel):
             duration_ms=row["duration_ms"],
             usage=usage,
             metadata=metadata,
-            error=row["error"]
+            error=row["error"],
         )
-    
+
     def to_db_values(self) -> tuple:
         """Convert to database values tuple"""
         return (
@@ -77,7 +83,6 @@ class Tracer:
         self.db_path = Path(db_path)
         self._init_db()
         self.is_tracing_enabled = get_env_var("PROMPTLY_TRACING_ENABLED", "false") == "true"
-
 
     def _init_db(self) -> None:
         """Initialize SQLite database"""
@@ -183,7 +188,9 @@ class Tracer:
         generation: Optional[int] = None,
     ) -> List[TraceRecord]:
         """Query optimizer-specific trace records"""
-        query = "SELECT * FROM traces WHERE json_extract(metadata, '$.optimizer_context') IS NOT NULL"
+        query = (
+            "SELECT * FROM traces WHERE json_extract(metadata, '$.optimizer_context') IS NOT NULL"
+        )
         params = []
 
         if model:
@@ -241,7 +248,7 @@ class Tracer:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 """
-                SELECT 
+                SELECT
                     COUNT(*) as total_calls,
                     COUNT(DISTINCT model) as unique_models,
                     AVG(duration_ms) as avg_duration,

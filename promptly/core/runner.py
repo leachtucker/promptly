@@ -1,15 +1,21 @@
-import time
 import asyncio
-from typing import Dict, Any, Optional, List
-from .templates import PromptTemplate
+import time
+from typing import Any, Dict, List, Optional
+
 from .clients import BaseLLMClient, LLMResponse
+from .templates import PromptTemplate
 from .tracer import Tracer, TraceRecord, UsageData
 
 
 class PromptRunner:
     """Orchestrates prompt execution"""
 
-    def __init__(self, client: BaseLLMClient, tracer: Optional[Tracer] = None, backup_client: Optional[BaseLLMClient] = None) -> None:
+    def __init__(
+        self,
+        client: BaseLLMClient,
+        tracer: Optional[Tracer] = None,
+        backup_client: Optional[BaseLLMClient] = None,
+    ) -> None:
         self.client = client
         self.tracer = tracer or Tracer()
         self.backup_client = backup_client
@@ -25,19 +31,22 @@ class PromptRunner:
 
         # Attempt with primary client
         try:
-            response = await self._run_with_client(self.client, model, prompt, variables, **llm_kwargs)
+            response = await self._run_with_client(
+                self.client, model, prompt, variables, **llm_kwargs
+            )
             return response
         except Exception as e:
             if self.backup_client is None:
                 raise e
-        
+
         # Attempt with backup client
         try:
-            response = await self._run_with_client(self.backup_client, model, prompt, variables, **llm_kwargs)
+            response = await self._run_with_client(
+                self.backup_client, model, prompt, variables, **llm_kwargs
+            )
             return response
         except Exception as e:
             raise e
-        
 
     async def run_batch(
         self,
@@ -58,17 +67,18 @@ class PromptRunner:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         # Filter out exceptions and return only LLMResponse objects
         return [result for result in results if isinstance(result, LLMResponse)]
-    
 
     async def _run_with_client(
         self,
         client: BaseLLMClient,
         model: str,
         prompt: PromptTemplate,
-        variables: Optional[Dict[str, Any]] = {},
+        variables: Optional[Dict[str, Any]] = None,
         **llm_kwargs: Any,
     ) -> LLMResponse:
         """Run a prompt template with a given client"""
+        if variables is None:
+            variables = {}
         variables = variables or {}
 
         # Render the prompt
@@ -88,15 +98,12 @@ class PromptRunner:
             self.tracer.log(error_record)
             raise e
 
-        
         # Call LLM
         start_time = time.time()
         generation_error = None
         response = None
         try:
-            response = await client.generate(
-                rendered_prompt, model=model, **llm_kwargs
-            )
+            response = await client.generate(rendered_prompt, model=model, **llm_kwargs)
         except Exception as e:
             generation_error = e
 
@@ -130,4 +137,3 @@ class PromptRunner:
         assert response is not None
 
         return response
-

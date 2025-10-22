@@ -2,9 +2,10 @@
 Tests for CLI interface
 """
 
-import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
+
 from click.testing import CliRunner
+
 from promptly.cli.main import main, run, trace
 from promptly.core.clients import LLMResponse
 from promptly.core.tracer import UsageData

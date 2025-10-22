@@ -47,8 +47,8 @@ promptly/
 
 ## 📝 Code Quality
 
-- **Format**: `black promptly/ tests/`
-- **Lint**: `flake8 promptly/ tests/`
+- **Format**: `ruff format promptly/ tests/`
+- **Lint**: `ruff check promptly/ tests/`
 - **Type Check**: `mypy promptly/`
 
 ## 🔧 Development Workflow
@@ -56,8 +56,8 @@ promptly/
 1. **Setup**: `uv pip install -e .[dev,cli,ui]`
 2. **Make changes** to code
 3. **Test**: `pytest`
-4. **Format**: `black promptly/ tests/`
-5. **Lint**: `flake8 promptly/ tests/`
+4. **Format**: `ruff format promptly/ tests/` (or `make format`)
+5. **Lint**: `ruff check promptly/ tests/` (or `make lint`)
 6. **Commit** your changes
 
 ## 📚 Documentation

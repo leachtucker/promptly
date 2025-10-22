@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite-based tracing and observability
 - Command-line interface
 - Comprehensive test suite
-- Development tools (Black, flake8, mypy, pytest)
+- Development tools (Ruff, mypy, pytest)
 - Documentation and examples
 
 ### Features

@@ -2,15 +2,16 @@
 Tests for LLM client implementations
 """
 
-import sys
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from promptly.core.clients import (
-    BaseLLMClient,
-    OpenAIClient,
     AnthropicClient,
+    BaseLLMClient,
     GoogleAIClient,
     LLMResponse,
+    OpenAIClient,
 )
 from promptly.core.tracer import UsageData
 
@@ -21,7 +22,7 @@ class TestBaseLLMClient:
     def test_base_client_is_abstract(self):
         """Test that BaseLLMClient cannot be instantiated directly"""
         with pytest.raises(TypeError):
-            BaseLLMClient() # type: ignore
+            BaseLLMClient()  # type: ignore
 
 
 class TestOpenAIClient:
@@ -63,9 +64,9 @@ class TestOpenAIClient:
         # Create client and test
         client = OpenAIClient(api_key="test-key")
         response = await client.generate(
-            prompt="Test prompt", 
-            model="gpt-3.5-turbo", 
-            options={"temperature": 0.7, "max_tokens": 100}
+            prompt="Test prompt",
+            model="gpt-3.5-turbo",
+            options={"temperature": 0.7, "max_tokens": 100},
         )
 
         # Verify response
@@ -274,15 +275,15 @@ class TestGoogleAIClient:
         mock_types = MagicMock()
         mock_genai.types = mock_types
         mock_genai.Client = MagicMock()
-        
-        with patch.dict('sys.modules', {'google': mock_google, 'google.genai': mock_genai}):
+
+        with patch.dict("sys.modules", {"google": mock_google, "google.genai": mock_genai}):
             client = GoogleAIClient(api_key="test-key")
             assert client.default_model == "gemini-1.5-flash"
 
     def test_google_ai_client_initialization_without_key(self):
         """Test Google AI client initialization without API key raises error"""
         # Mock the environment variable to ensure it's not set
-        with patch('promptly.core.clients.ENV_GEMINI_API_KEY', None):
+        with patch("promptly.core.clients.ENV_GEMINI_API_KEY", None):
             with pytest.raises(ValueError, match="Google API key is required"):
                 GoogleAIClient()
 
@@ -295,7 +296,7 @@ class TestGoogleAIClient:
         mock_response.candidates = [MagicMock()]
         mock_response.candidates[0].finish_reason = "STOP"
         mock_response.candidates[0].safety_ratings = []
-        
+
         # Mock usage metadata
         mock_usage = MagicMock()
         mock_usage.prompt_token_count = 10
@@ -308,22 +309,22 @@ class TestGoogleAIClient:
         mock_genai_module = MagicMock()
         mock_types = MagicMock()
         mock_genai_module.types = mock_types
-        
+
         # Create properly structured async mock
         mock_client_instance = MagicMock()
         mock_client_instance.aio = MagicMock()
         mock_client_instance.aio.models = MagicMock()
         mock_client_instance.aio.models.generate_content = AsyncMock(return_value=mock_response)
-        
+
         mock_genai_module.Client = MagicMock(return_value=mock_client_instance)
 
-        with patch.dict('sys.modules', {'google': mock_google, 'google.genai': mock_genai_module}):
+        with patch.dict("sys.modules", {"google": mock_google, "google.genai": mock_genai_module}):
             # Create client
             client = GoogleAIClient(api_key="test-key")
-            
+
             # Manually set the client.client to our mock since the import creates its own instance
             client.client = mock_client_instance
-            
+
             # Test generate
             response = await client.generate(
                 prompt="Test prompt",
@@ -347,7 +348,7 @@ class TestGoogleAIClient:
         mock_response.candidates = [MagicMock()]
         mock_response.candidates[0].finish_reason = "STOP"
         mock_response.candidates[0].safety_ratings = []
-        
+
         mock_usage = MagicMock()
         mock_usage.prompt_token_count = 5
         mock_usage.candidates_token_count = 3
@@ -359,22 +360,22 @@ class TestGoogleAIClient:
         mock_genai_module = MagicMock()
         mock_types = MagicMock()
         mock_genai_module.types = mock_types
-        
+
         # Create properly structured async mock
         mock_client_instance = MagicMock()
         mock_client_instance.aio = MagicMock()
         mock_client_instance.aio.models = MagicMock()
         mock_client_instance.aio.models.generate_content = AsyncMock(return_value=mock_response)
-        
+
         mock_genai_module.Client = MagicMock(return_value=mock_client_instance)
 
-        with patch.dict('sys.modules', {'google': mock_google, 'google.genai': mock_genai_module}):
+        with patch.dict("sys.modules", {"google": mock_google, "google.genai": mock_genai_module}):
             # Create client
             client = GoogleAIClient(api_key="test-key")
-            
+
             # Manually set the client.client to our mock
             client.client = mock_client_instance
-            
+
             # Test generate with minimal parameters
             response = await client.generate(prompt="Test prompt")
 
@@ -391,16 +392,16 @@ class TestGoogleAIClient:
         mock_model_2.name = "gemini-1.5-pro"
         mock_model_3 = MagicMock()
         mock_model_3.name = "gemini-2.0-flash-exp"
-        
+
         # Create mock response with page attribute
         mock_models_response = MagicMock()
         mock_models_response.page = [mock_model_1, mock_model_2, mock_model_3]
-        
+
         # Create mock client instance
         mock_client_instance = MagicMock()
         mock_client_instance.models.list = MagicMock(return_value=mock_models_response)
-        
-        with patch('google.genai.Client', return_value=mock_client_instance):
+
+        with patch("google.genai.Client", return_value=mock_client_instance):
             client = GoogleAIClient(api_key="test-key")
             models = client.get_available_models()
 
@@ -409,9 +410,9 @@ class TestGoogleAIClient:
             assert "gemini-1.5-flash" in models
             assert "gemini-1.5-pro" in models
             assert "gemini-2.0-flash-exp" in models
-            
+
             # Verify the list method was called with correct config
-            mock_client_instance.models.list.assert_called_once_with(config={'query_base': True})
+            mock_client_instance.models.list.assert_called_once_with(config={"query_base": True})
 
     @pytest.mark.asyncio
     async def test_google_ai_client_generate_error(self):
@@ -421,19 +422,21 @@ class TestGoogleAIClient:
         mock_genai_module = MagicMock()
         mock_types = MagicMock()
         mock_genai_module.types = mock_types
-        
+
         # Create properly structured async mock that raises an error
         mock_client_instance = MagicMock()
         mock_client_instance.aio = MagicMock()
         mock_client_instance.aio.models = MagicMock()
-        mock_client_instance.aio.models.generate_content = AsyncMock(side_effect=Exception("API Error"))
-        
+        mock_client_instance.aio.models.generate_content = AsyncMock(
+            side_effect=Exception("API Error")
+        )
+
         mock_genai_module.Client = MagicMock(return_value=mock_client_instance)
 
-        with patch.dict('sys.modules', {'google': mock_google, 'google.genai': mock_genai_module}):
+        with patch.dict("sys.modules", {"google": mock_google, "google.genai": mock_genai_module}):
             # Create client
             client = GoogleAIClient(api_key="test-key")
-            
+
             # Manually set the client.client to our mock
             client.client = mock_client_instance
 

@@ -2,9 +2,11 @@
 Tests for PromptTemplate and PromptMetadata
 """
 
-import pytest
 from datetime import datetime
-from promptly.core.templates import PromptTemplate, PromptMetadata
+
+import pytest
+
+from promptly.core.templates import PromptMetadata, PromptTemplate
 
 
 class TestPromptMetadata:
@@ -55,9 +57,7 @@ class TestPromptTemplate:
 
     def test_prompt_template_render_with_defaults(self):
         """Test template rendering with default values"""
-        template = PromptTemplate(
-            template="Hello {{ name|default('World') }}!", name="greeting"
-        )
+        template = PromptTemplate(template="Hello {{ name|default('World') }}!", name="greeting")
 
         result = template.render()
         assert result == "Hello World!"
@@ -66,7 +66,7 @@ class TestPromptTemplate:
         """Test template rendering with missing required variable"""
         template = PromptTemplate(template="Hello {{ name }}!", name="greeting")
 
-        with pytest.raises(Exception):  # Jinja2 will raise UndefinedError
+        with pytest.raises(ValueError):  # Raises ValueError for missing template variable
             template.render()
 
     def test_prompt_template_render_with_env_vars(self):
@@ -115,18 +115,18 @@ class TestPromptTemplate:
 
         # Test that variables are correctly extracted
         assert len(variables) == 2  # name and age
-        
+
         # Test validate_variables
         assert template.validate_variables({"name": "Alice", "age": 25})
         assert not template.validate_variables({"name": "Alice"})  # Missing age
         assert template.validate_variables(
             {"name": "Alice", "age": 25, "extra": "value"}
         )  # Extra variable is OK
-        
+
         # Test get_validation_errors
         errors = template.get_validation_errors({"name": "Alice"})
         assert len(errors) == 1
         assert "Missing required variables: age" in errors[0]
-        
+
         errors = template.get_validation_errors({"name": "Alice", "age": 25})
         assert len(errors) == 0

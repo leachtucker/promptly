@@ -3,12 +3,12 @@ Tests for PromptRunner
 """
 
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock
+
+from promptly.core.clients import LLMResponse
 from promptly.core.runner import PromptRunner
 from promptly.core.templates import PromptTemplate
-from promptly.core.clients import LLMResponse
-from promptly.core.tracer import Tracer, TraceRecord, UsageData
+from promptly.core.tracer import Tracer, UsageData
+
 
 class TestPromptRunner:
     """Test PromptRunner functionality"""
@@ -22,9 +22,7 @@ class TestPromptRunner:
         assert isinstance(runner.tracer, Tracer)
 
     @pytest.mark.asyncio
-    async def test_runner_with_custom_tracer(
-        self, mock_llm_client, tracer_with_temp_db
-    ):
+    async def test_runner_with_custom_tracer(self, mock_llm_client, tracer_with_temp_db):
         """Test PromptRunner with custom tracer"""
         runner = PromptRunner(mock_llm_client, tracer_with_temp_db)
 
@@ -32,7 +30,9 @@ class TestPromptRunner:
         assert runner.tracer == tracer_with_temp_db
 
     @pytest.mark.asyncio
-    async def test_runner_run_success(self, mock_llm_client, sample_prompt_template, tracer_with_temp_db):
+    async def test_runner_run_success(
+        self, mock_llm_client, sample_prompt_template, tracer_with_temp_db
+    ):
         """Test successful prompt execution"""
         runner = PromptRunner(mock_llm_client, tracer_with_temp_db)
 
@@ -98,9 +98,7 @@ class TestPromptRunner:
         assert trace.error is None
 
     @pytest.mark.asyncio
-    async def test_runner_run_template_render_error(
-        self, mock_llm_client, tracer_with_temp_db
-    ):
+    async def test_runner_run_template_render_error(self, mock_llm_client, tracer_with_temp_db):
         """Test prompt execution with template rendering error"""
         runner = PromptRunner(mock_llm_client, tracer_with_temp_db)
 
@@ -111,7 +109,7 @@ class TestPromptRunner:
         )
 
         # Run with missing required variable
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             await runner.run(
                 prompt=template,
                 variables={"name": "Alice"},  # Missing 'age'
@@ -167,12 +165,9 @@ class TestPromptRunner:
         )
         mock_llm_client.generate.return_value = expected_response
 
-
         template = PromptTemplate(template="What is the capital of France?", name="simple_question")
         # Run simple prompt
-        response = await runner.run(
-            prompt=template, model="gpt-3.5-turbo"
-        )
+        response = await runner.run(prompt=template, model="gpt-3.5-turbo")
 
         # Verify response
         assert response == expected_response
@@ -222,9 +217,7 @@ class TestPromptRunner:
         runner = PromptRunner(mock_llm_client, tracer_with_temp_db)
 
         # Create template that doesn't require variables
-        template = PromptTemplate(
-            template="What is the capital of France?", name="simple_question"
-        )
+        template = PromptTemplate(template="What is the capital of France?", name="simple_question")
 
         # Mock the client response
         expected_response = LLMResponse(
@@ -244,6 +237,3 @@ class TestPromptRunner:
         mock_llm_client.generate.assert_called_once()
         call_args = mock_llm_client.generate.call_args
         assert call_args[0][0] == "What is the capital of France?"
-
-
-

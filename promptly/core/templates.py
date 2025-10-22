@@ -1,12 +1,14 @@
-from typing import Dict, Any, Optional, List
-import jinja2
 import json
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import jinja2
 from pydantic import BaseModel, Field
 
 
 class PromptMetadata(BaseModel):
     """Metadata for prompt templates"""
+
     name: str
     version: str = "1.0.0"
     description: str = ""
@@ -22,8 +24,10 @@ class PromptTemplate:
         template: str,
         name: Optional[str] = None,
         metadata: Optional[PromptMetadata] = None,
-        env_vars: Dict[str, Any] = {},
+        env_vars: Dict[str, Any] = None,
     ):
+        if env_vars is None:
+            env_vars = {}
         self.template = template
         self.name = name or f"prompt_{id(self)}"
         self.metadata = metadata or PromptMetadata(name=self.name)
@@ -42,14 +46,14 @@ class PromptTemplate:
 
         # At this point, _compiled_template is guaranteed to be a Template object
         assert self._compiled_template is not None
-        
+
         # Merge env vars and kwargs (kwargs take precedence)
         context = {**self.env_vars, **kwargs}
 
         try:
             return self._compiled_template.render(**context)
         except jinja2.UndefinedError as e:
-            raise ValueError(f"Missing template variable: {e}")
+            raise ValueError(f"Missing template variable: {e}") from e
 
     def get_variables(self) -> List[str]:
         """Extract all variables from the template"""
@@ -59,48 +63,49 @@ class PromptTemplate:
         # At this point, _compiled_template is guaranteed to be a Template object
         assert self._compiled_template is not None
         return [
-            node.name for node in self._compiled_template.environment.parse(self.template).find_all(
+            node.name
+            for node in self._compiled_template.environment.parse(self.template).find_all(
                 jinja2.nodes.Name  # type: ignore
             )
         ]
 
     def validate_variables(self, variables: Dict[str, Any]) -> bool:
         """Validate that all required template variables are provided
-        
+
         Args:
             variables: Dictionary of variables to validate
-            
+
         Returns:
             True if all required variables are provided, False otherwise
         """
         required_vars = set(self.get_variables())
         provided_vars = set(variables.keys())
-        
+
         # Check if all required variables are provided
         missing_vars = required_vars - provided_vars
         if missing_vars:
             return False
-            
+
         return True
 
     def get_validation_errors(self, variables: Dict[str, Any]) -> List[str]:
         """Get detailed validation errors for template variables
-        
+
         Args:
             variables: Dictionary of variables to validate
-            
+
         Returns:
             List of error messages describing validation issues
         """
         errors = []
         required_vars = set(self.get_variables())
         provided_vars = set(variables.keys())
-        
+
         # Check for missing variables
         missing_vars = required_vars - provided_vars
         if missing_vars:
             errors.append(f"Missing required variables: {', '.join(sorted(missing_vars))}")
-        
+
         return errors
 
     def to_dict(self) -> Dict[str, Any]:
@@ -131,6 +136,6 @@ class PromptTemplate:
     @classmethod
     def load(cls, filepath: str) -> "PromptTemplate":
         """Load template from file"""
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             data = json.load(f)
         return cls.from_dict(data)

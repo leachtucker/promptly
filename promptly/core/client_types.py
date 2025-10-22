@@ -9,10 +9,6 @@ The types are aliased for cleaner imports and consistent naming across the codeb
 
 # Re-export OpenAI types
 # These come directly from the openai SDK and include all parameters for chat.completions.create()
-from openai.types.chat.completion_create_params import (
-    CompletionCreateParamsBase as OpenAIOptions,
-)
-
 # Re-export Anthropic types
 # These come directly from the anthropic SDK and include all parameters for messages.create()
 from anthropic.types.message_create_params import (
@@ -24,10 +20,12 @@ from anthropic.types.message_create_params import (
 from google.genai.types import (
     GenerateContentConfigDict as GoogleAIOptions,
 )
+from openai.types.chat.completion_create_params import (
+    CompletionCreateParamsBase as OpenAIOptions,
+)
 
 __all__ = [
     "OpenAIOptions",
     "AnthropicOptions",
     "GoogleAIOptions",
 ]
-

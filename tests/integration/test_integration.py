@@ -2,11 +2,12 @@
 Integration tests for promptly package
 """
 
+from unittest.mock import AsyncMock
+
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, patch
-from promptly import PromptRunner, PromptTemplate, PromptMetadata
-from promptly.core.clients import OpenAIClient, LLMResponse
+
+from promptly import PromptMetadata, PromptRunner, PromptTemplate
+from promptly.core.clients import LLMResponse
 from promptly.core.tracer import Tracer, UsageData
 
 
@@ -97,9 +98,7 @@ class TestIntegration:
         mock_client.generate.side_effect = mock_responses
 
         # Create templates
-        greeting_template = PromptTemplate(
-            template="Hello {{ name }}!", name="greeting"
-        )
+        greeting_template = PromptTemplate(template="Hello {{ name }}!", name="greeting")
         question_template = PromptTemplate(
             template="What is the capital of {{ country }}?", name="capital_question"
         )
@@ -152,9 +151,7 @@ class TestIntegration:
 
         # Execute and expect error
         with pytest.raises(Exception, match="API rate limit exceeded"):
-            await runner.run(
-                prompt=template, variables={"name": "Alice"}, model="gpt-3.5-turbo"
-            )
+            await runner.run(prompt=template, variables={"name": "Alice"}, model="gpt-3.5-turbo")
 
         # Verify error trace was recorded
         traces = tracer.list_records()
@@ -184,9 +181,7 @@ class TestIntegration:
         runner = PromptRunner(mock_client, tracer)
 
         # Execute simple prompt with template
-        template = PromptTemplate(
-            template="What is the capital of France?", name="simple_question"
-        )
+        template = PromptTemplate(template="What is the capital of France?", name="simple_question")
         response = await runner.run(prompt=template, model="gpt-3.5-turbo")
 
         # Verify response
@@ -204,21 +199,16 @@ class TestIntegration:
     def test_package_imports(self):
         """Test that all package imports work correctly"""
         # Test main package imports
+        # Verify classes can be instantiated (with mocks where needed)
+        from unittest.mock import AsyncMock
+
         from promptly import (
             PromptRunner,
             PromptTemplate,
             Tracer,
-            LLMResponse,
-        )
-        
-        # Test core.clients imports
-        from promptly.core.clients import (
-            OpenAIClient,
-            AnthropicClient,
         )
 
-        # Verify classes can be instantiated (with mocks where needed)
-        from unittest.mock import AsyncMock
+        # Test core.clients imports
 
         mock_client = AsyncMock()
 
