@@ -7,11 +7,10 @@ help:  ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 install:  ## Install the package
-	pip install -e .
+	uv pip install -e .
 
 install-dev:  ## Install package with development dependencies
-	source venv/bin/activate && \
-	pip install -e .[dev,cli,ui]
+	uv pip install -e .[dev,cli,ui]
 
 test:  ## Run all tests
 	pytest
@@ -52,7 +51,7 @@ build:  ## Build the package
 	python -m build
 
 install-build:  ## Install the built package
-	pip install dist/*.whl
+	uv pip install dist/*.whl
 
 docs:  ## Generate documentation (if sphinx is configured)
 	@echo "Documentation generation not yet configured"
@@ -60,7 +59,7 @@ docs:  ## Generate documentation (if sphinx is configured)
 check: lint type-check test  ## Run all checks (lint, type-check, test)
 
 ci:  ## Run CI pipeline locally
-	pip install -e .[dev,cli,ui]
+	uv pip install -e .[dev,cli,ui]
 	black --check promptly/ tests/
 	flake8 promptly/ tests/
 	mypy promptly/

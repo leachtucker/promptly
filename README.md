@@ -15,23 +15,22 @@ Currently with support for Python.
 
 ## Installation
 
-```bash
-pip install promptly
-```
 
-For development dependencies:
 ```bash
-pip install promptly[dev]
-```
+# Install UV if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-For CLI tools:
-```bash
-pip install promptly[cli]
-```
+# Install promptly
+uv pip install promptly
 
-For UI components:
-```bash
-pip install promptly[ui]
+# With development dependencies
+uv pip install promptly[dev]
+
+# With CLI tools
+uv pip install promptly[cli]
+
+# With UI components
+uv pip install promptly[ui]
 ```
 
 ## Quick Start

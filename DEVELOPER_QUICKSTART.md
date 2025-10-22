@@ -1,14 +1,6 @@
 # Developer Quick Start
 
-## 🚀 One-Command Setup
-
-```bash
-# Complete development setup
-python dev.py install && python dev.py test
-```
-
 ## 📋 Common Commands
-
 
 ### Using Make 
 ```bash
@@ -61,11 +53,11 @@ promptly/
 
 ## 🔧 Development Workflow
 
-1. **Setup**: `python dev.py install`
+1. **Setup**: `uv pip install -e .[dev,cli,ui]`
 2. **Make changes** to code
-3. **Test**: `python dev.py test`
-4. **Format**: `python dev.py format`
-5. **Lint**: `python dev.py lint`
+3. **Test**: `pytest`
+4. **Format**: `black promptly/ tests/`
+5. **Lint**: `flake8 promptly/ tests/`
 6. **Commit** your changes
 
 ## 📚 Documentation
@@ -82,7 +74,7 @@ pytest -v -s
 pytest --pdb tests/test_runner.py::TestPromptRunner::test_runner_run_success
 
 # Check package installation
-pip show promptly
+uv pip show promptly
 
 # Test CLI
 promptly --help
@@ -90,22 +82,28 @@ promptly --help
 
 ## 🚨 Common Issues
 
-1. **Import errors**: Ensure virtual environment is activated
+1. **Import errors**: Ensure you've run `uv pip install -e .[dev,cli,ui]`
 2. **Test failures**: Run `make install-dev` first
-3. **CLI not found**: Install with `pip install -e .[cli]`
+3. **CLI not found**: Install with `uv pip install -e .[cli]`
+4. **UV not found**: Install UV with `curl -LsSf https://astral.sh/uv/install.sh | sh`
 
 ## 📦 Package Management
 
+UV is a fast Python package installer and resolver, 10-100x faster than pip.
+
 ```bash
 # Install in development mode
-pip install -e .
+uv pip install -e .
 
 # Install with all optional dependencies
-pip install -e .[dev,cli,ui]
+uv pip install -e .[dev,cli,ui]
 
 # Build package
 python -m build
 
 # Install built package
-pip install dist/*.whl
+uv pip install dist/*.whl
+
+# Create/sync virtual environment (UV handles this automatically)
+# UV will create .venv if it doesn't exist when you run uv pip install
 ```
