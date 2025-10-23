@@ -2,7 +2,7 @@ import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -29,7 +29,7 @@ class TraceRecord(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
     duration_ms: float = 0
     usage: UsageData = Field(default_factory=UsageData)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
 
     @classmethod
@@ -138,7 +138,7 @@ class Tracer:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         optimizer_only: bool = False,
-    ) -> List[TraceRecord]:
+    ) -> list[TraceRecord]:
         """Query trace records"""
         query = "SELECT * FROM traces WHERE 1=1"
         params = []
@@ -186,7 +186,7 @@ class Tracer:
         end_date: Optional[datetime] = None,
         optimization_id: Optional[str] = None,
         generation: Optional[int] = None,
-    ) -> List[TraceRecord]:
+    ) -> list[TraceRecord]:
         """Query optimizer-specific trace records"""
         query = (
             "SELECT * FROM traces WHERE json_extract(metadata, '$.optimizer_context') IS NOT NULL"
@@ -243,7 +243,7 @@ class Tracer:
 
             return TraceRecord.from_db_row(row)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get basic statistics"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(

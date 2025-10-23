@@ -3,7 +3,7 @@ Tests for optimizer module
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Optional, TypeVar
 
 import pytest
 from pydantic import BaseModel
@@ -35,7 +35,7 @@ class MockLLMClient(BaseLLMClient):
         self.structured_call_count = 0
 
     async def generate(
-        self, prompt: str, model: Optional[str] = None, options: Optional[Dict[str, Any]] = None
+        self, prompt: str, model: Optional[str] = None, options: Optional[dict[str, Any]] = None
     ) -> LLMResponse:
         if self.structured_responses:
             # Return JSON response for structured calls
@@ -64,9 +64,9 @@ class MockLLMClient(BaseLLMClient):
     async def generate_structured(
         self,
         prompt: str,
-        response_model: Type[T],
+        response_model: type[T],
         model: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        options: Optional[dict[str, Any]] = None,
     ) -> T:
         """Mock structured generation"""
         if self.structured_responses:
@@ -79,7 +79,7 @@ class MockLLMClient(BaseLLMClient):
             # Return a default instance
             return response_model()
 
-    async def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> list[str]:
         return ["mock-model"]
 
 

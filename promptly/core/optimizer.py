@@ -9,7 +9,7 @@ import sqlite3
 import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -34,7 +34,7 @@ class ProgressCallback(ABC):
         pass
 
     @abstractmethod
-    async def on_generation_complete(self, stats: Dict[str, Any]) -> None:
+    async def on_generation_complete(self, stats: dict[str, Any]) -> None:
         """Called when a generation completes with statistics"""
         pass
 
@@ -53,7 +53,7 @@ class NoOpProgressCallback(ProgressCallback):
     async def on_generation_start(self, generation: int, total_generations: int) -> None:
         pass
 
-    async def on_generation_complete(self, stats: Dict[str, Any]) -> None:
+    async def on_generation_complete(self, stats: dict[str, Any]) -> None:
         pass
 
     async def on_optimization_complete(self, result: "OptimizationResult") -> None:
@@ -71,15 +71,15 @@ class OptimizationResult(BaseModel):
     population_size: int
     total_evaluations: int
     optimization_time: float
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PromptTestCase(BaseModel):
     """A test case for prompt evaluation"""
 
-    input_variables: Dict[str, Any]
+    input_variables: dict[str, Any]
     expected_output: Any  # Can be string or dict for structured outputs
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class FitnessEvaluation(BaseModel):
@@ -89,9 +89,9 @@ class FitnessEvaluation(BaseModel):
 
     prompt: PromptTemplate
     score: float
-    test_results: List[Dict[str, Any]]
+    test_results: list[dict[str, Any]]
     evaluation_reasoning: str  # LLM's reasoning for the score
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 # Structured output models for LLM responses
@@ -122,7 +122,7 @@ class MutationResponse(BaseModel):
 class PopulationGenerationResponse(BaseModel):
     """Structured response for population generation"""
 
-    variations: List[str] = Field(
+    variations: list[str] = Field(
         description="List of prompt template variations. Valid JSON string value."
     )
 
@@ -148,8 +148,8 @@ class LLMFitnessFunction(ABC):
         runner: PromptRunner,
         prompt: PromptTemplate,
         model: str = "gpt-4",
-        test_cases: Optional[List[PromptTestCase]] = None,
-        variables: Optional[Dict[str, Any]] = None,
+        test_cases: Optional[list[PromptTestCase]] = None,
+        variables: Optional[dict[str, Any]] = None,
     ) -> FitnessEvaluation:
         """Evaluate fitness of a prompt using LLM"""
         pass
@@ -175,8 +175,8 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
         runner: PromptRunner,
         prompt: PromptTemplate,
         model: str = "gpt-4",
-        test_cases: Optional[List[PromptTestCase]] = None,
-        variables: Optional[Dict[str, Any]] = None,
+        test_cases: Optional[list[PromptTestCase]] = None,
+        variables: Optional[dict[str, Any]] = None,
     ) -> FitnessEvaluation:
         """Evaluate prompt using comprehensive accuracy and semantic analysis"""
 
@@ -226,12 +226,12 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
         runner: PromptRunner,
         model: str,
         prompt: PromptTemplate,
-        test_cases: List[PromptTestCase],
-    ) -> List[Dict[str, Any]]:
+        test_cases: list[PromptTestCase],
+    ) -> list[dict[str, Any]]:
         """Run test cases in parallel with controlled concurrency"""
         semaphore = asyncio.Semaphore(self.test_case_concurrency)
 
-        async def run_single_test(test_case: PromptTestCase) -> Dict[str, Any]:
+        async def run_single_test(test_case: PromptTestCase) -> dict[str, Any]:
             async with semaphore:
                 try:
                     response = await runner.run(
@@ -259,7 +259,7 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
         return results
 
     def _create_comprehensive_evaluation_prompt(
-        self, prompt: PromptTemplate, test_results: List[Dict[str, Any]]
+        self, prompt: PromptTemplate, test_results: list[dict[str, Any]]
     ) -> str:
         """Create comprehensive evaluation prompt combining accuracy and semantic analysis"""
         return f"""
@@ -528,7 +528,7 @@ class LLMPopulationGenerator:
 
     async def generate_initial_population(
         self, base_prompt: PromptTemplate, population_size: int, diversity_level: float = 0.7
-    ) -> List[PromptTemplate]:
+    ) -> list[PromptTemplate]:
         """Generate diverse initial population using LLM"""
 
         generation_prompt = self._create_generation_prompt(
@@ -597,8 +597,8 @@ ORIGINAL PROMPT:
 """
 
     def _create_variations_from_structured(
-        self, variations: List[str], base_prompt: PromptTemplate
-    ) -> List[PromptTemplate]:
+        self, variations: list[str], base_prompt: PromptTemplate
+    ) -> list[PromptTemplate]:
         """Create PromptTemplate objects from structured response variations"""
         prompt_templates = []
 
@@ -624,7 +624,7 @@ class LLMPromptCrossover:
 
     async def crossover(
         self, parent1: PromptTemplate, parent2: PromptTemplate
-    ) -> Tuple[PromptTemplate, PromptTemplate]:
+    ) -> tuple[PromptTemplate, PromptTemplate]:
         """Use LLM to intelligently combine two prompts"""
 
         crossover_prompt = self._create_crossover_prompt(parent1, parent2)
@@ -704,7 +704,7 @@ class OptimizerPromptRunner(PromptRunner):
         client: BaseLLMClient,
         tracer: Optional[Tracer] = None,
         backup_client: Optional[BaseLLMClient] = None,
-        optimizer_context: Optional[Dict[str, Any]] = None,
+        optimizer_context: Optional[dict[str, Any]] = None,
     ):
         super().__init__(client, tracer, backup_client)
         self.optimizer_context = optimizer_context or {}
@@ -714,7 +714,7 @@ class OptimizerPromptRunner(PromptRunner):
         client: BaseLLMClient,
         model: str,
         prompt: PromptTemplate,
-        variables: Optional[Dict[str, Any]] = None,
+        variables: Optional[dict[str, Any]] = None,
         **llm_kwargs: Any,
     ) -> LLMResponse:
         """Override to add optimizer context to traces"""
@@ -787,9 +787,9 @@ class LLMGeneticOptimizer:
 
         # Internal state
         self.current_generation = 0
-        self.population: List[PromptTemplate] = []
-        self.fitness_scores: List[float] = []
-        self._current_generation_stats: Optional[Dict[str, Any]] = None
+        self.population: list[PromptTemplate] = []
+        self.fitness_scores: list[float] = []
+        self._current_generation_stats: Optional[dict[str, Any]] = None
         self.optimization_id: str = str(uuid.uuid4())
 
     async def optimize(
@@ -798,8 +798,8 @@ class LLMGeneticOptimizer:
         runner: PromptRunner,
         base_prompt: PromptTemplate,
         model: str,
-        test_cases: Optional[List[PromptTestCase]] = None,
-        variables: Optional[Dict[str, Any]] = None,
+        test_cases: Optional[list[PromptTestCase]] = None,
+        variables: Optional[dict[str, Any]] = None,
     ) -> OptimizationResult:
         """Run the LLM-powered genetic optimization process"""
 
@@ -851,7 +851,7 @@ class LLMGeneticOptimizer:
             if errors:
                 print(f"Failed to evaluate {len(errors)} individuals: {errors}")
 
-            valid_evaluations: List[FitnessEvaluation] = [
+            valid_evaluations: list[FitnessEvaluation] = [
                 eval for eval in evaluations if isinstance(eval, FitnessEvaluation)
             ]
 
@@ -907,11 +907,11 @@ class LLMGeneticOptimizer:
     async def _evaluate_population(
         self,
         *,
-        test_cases: Optional[List[PromptTestCase]],
+        test_cases: Optional[list[PromptTestCase]],
         runner: PromptRunner,
-        variables: Optional[Dict[str, Any]] = None,
+        variables: Optional[dict[str, Any]] = None,
         model: str,
-    ) -> List[Union[FitnessEvaluation, BaseException]]:
+    ) -> list[Union[FitnessEvaluation, BaseException]]:
         """Evaluate fitness for entire population"""
         if not self.fitness_function:
             raise ValueError("No fitness function provided")
@@ -935,14 +935,14 @@ class LLMGeneticOptimizer:
         return evaluations
 
     def _tournament_selection(
-        self, evaluations: List[FitnessEvaluation], tournament_size: int = 3
+        self, evaluations: list[FitnessEvaluation], tournament_size: int = 3
     ) -> PromptTemplate:
         """Select a parent using tournament selection"""
         tournament = random.sample(evaluations, min(tournament_size, len(evaluations)))
         winner = max(tournament, key=lambda x: x.score)
         return winner.prompt
 
-    async def _create_next_generation_llm(self, evaluations: List[FitnessEvaluation]) -> None:
+    async def _create_next_generation_llm(self, evaluations: list[FitnessEvaluation]) -> None:
         """Create next generation using parallelized LLM-powered operations"""
         new_population = []
 
@@ -989,14 +989,14 @@ class LLMGeneticOptimizer:
         self.population = new_population[: self.population_size]
 
     async def _execute_generation_operations_parallel(
-        self, operations: List[Dict[str, Any]]
-    ) -> List[PromptTemplate]:
+        self, operations: list[dict[str, Any]]
+    ) -> list[PromptTemplate]:
         """Execute all crossover and mutation operations in parallel"""
 
         # Semaphore to limit concurrent LLM calls
         semaphore = asyncio.Semaphore(self.max_concurrent_evaluations)
 
-        async def process_operation(op: Dict[str, Any]) -> PromptTemplate:
+        async def process_operation(op: dict[str, Any]) -> PromptTemplate:
             async with semaphore:
                 parent1 = op["parent1"]
                 parent2 = op["parent2"]
@@ -1041,7 +1041,7 @@ class LLMGeneticOptimizer:
         return valid_results
 
     async def _log_generation_progress(
-        self, generation: int, best_evaluation: FitnessEvaluation, errors: List[BaseException]
+        self, generation: int, best_evaluation: FitnessEvaluation, errors: list[BaseException]
     ) -> None:
         """Log progress of optimization"""
         # Calculate metrics for internal tracking
@@ -1061,7 +1061,7 @@ class LLMGeneticOptimizer:
         }
 
 
-def _get_llm_config_for_client(client: BaseLLMClient) -> Dict[str, Any]:
+def _get_llm_config_for_client(client: BaseLLMClient) -> dict[str, Any]:
     """
     Get the appropriate LLM configuration based on client type.
     """

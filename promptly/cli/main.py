@@ -4,7 +4,7 @@ Command-line interface for promptly
 
 import asyncio
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import click
 from rich import box
@@ -34,7 +34,7 @@ class RichProgressCallback(ProgressCallback):
         self.progress = progress
         self.task_id = task_id
         self.generation_count = 0
-        self.best_candidates: List[Dict[str, Any]] = []
+        self.best_candidates: list[dict[str, Any]] = []
 
     async def on_population_initialized(self, population_size: int) -> None:
         """Called when initial population is created"""

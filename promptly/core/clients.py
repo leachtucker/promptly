@@ -3,7 +3,7 @@ LLM clients for Promptly
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Optional, TypeVar
 
 import anthropic
 import openai
@@ -29,7 +29,7 @@ class LLMResponse(BaseModel):
     content: Optional[str] = None
     model: str
     usage: UsageData = Field(default_factory=UsageData)  # tokens used
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class BaseLLMClient(ABC):
@@ -59,7 +59,7 @@ class BaseLLMClient(ABC):
     async def generate_structured(
         self,
         prompt: str,
-        response_model: Type[T],
+        response_model: type[T],
         model: Optional[str] = None,
         options: Optional[Any] = None,
     ) -> T:
@@ -78,7 +78,7 @@ class BaseLLMClient(ABC):
         pass
 
     @abstractmethod
-    async def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> list[str]:
         """Get list of available models"""
         pass
 
@@ -148,7 +148,7 @@ class OpenAIClient(BaseLLMClient):
     async def generate_structured(
         self,
         prompt: str,
-        response_model: Type[T],
+        response_model: type[T],
         model: Optional[str] = None,
         options: Optional[OpenAIOptions] = None,
     ) -> T:
@@ -181,7 +181,7 @@ class OpenAIClient(BaseLLMClient):
             raise ValueError("Failed to parse structured response")
         return parsed
 
-    async def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> list[str]:
         models = await self.client.models.list()
         return [model.id for model in models.data]
 
@@ -227,7 +227,7 @@ class AnthropicClient(BaseLLMClient):
             - messages: [] (will be populated from prompt)
         """
         model = model or self.default_model
-        opts: Dict[str, Any] = dict(options or {})
+        opts: dict[str, Any] = dict(options or {})
 
         # Anthropic requires max_tokens and messages
         if "max_tokens" not in opts:
@@ -255,7 +255,7 @@ class AnthropicClient(BaseLLMClient):
     async def generate_structured(
         self,
         prompt: str,
-        response_model: Type[T],
+        response_model: type[T],
         model: Optional[str] = None,
         options: Optional[AnthropicOptions] = None,
     ) -> T:
@@ -276,7 +276,7 @@ class AnthropicClient(BaseLLMClient):
             so this method uses JSON schema prompting and parsing.
         """
         model = model or self.default_model
-        opts: Dict[str, Any] = dict(options or {})
+        opts: dict[str, Any] = dict(options or {})
 
         # Anthropic requires max_tokens and messages
         if "max_tokens" not in opts:
@@ -302,7 +302,7 @@ class AnthropicClient(BaseLLMClient):
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"Failed to parse structured response: {e}") from e
 
-    async def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> list[str]:
         models = await self.client.models.list(limit=1000)
         return [model.id for model in models.data]
 
@@ -390,7 +390,7 @@ class GoogleAIClient(BaseLLMClient):
     async def generate_structured(
         self,
         prompt: str,
-        response_model: Type[T],
+        response_model: type[T],
         model: Optional[str] = None,
         options: Optional[GoogleAIOptions] = None,
     ) -> T:
@@ -408,7 +408,7 @@ class GoogleAIClient(BaseLLMClient):
             T: Instance of response_model with parsed data
         """
         model_name = model or self.default_model
-        opts: Dict[str, Any] = dict(options) if options else {}
+        opts: dict[str, Any] = dict(options) if options else {}
 
         # Get the JSON schema
         schema = response_model.model_json_schema()
@@ -436,7 +436,7 @@ class GoogleAIClient(BaseLLMClient):
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"Failed to parse structured response: {e}") from e
 
-    async def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> list[str]:
         """Get list of available Gemini models"""
         models = self.client.models.list(config={"query_base": True})
         return [model.name for model in models.page if model.name]
@@ -458,7 +458,7 @@ class LocalLLMClient(BaseLLMClient):
         self,
         prompt: str,
         model: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        options: Optional[dict[str, Any]] = None,
     ) -> LLMResponse:
         """
         Generate response using local model.
@@ -486,9 +486,9 @@ class LocalLLMClient(BaseLLMClient):
     async def generate_structured(
         self,
         prompt: str,
-        response_model: Type[T],
+        response_model: type[T],
         model: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        options: Optional[dict[str, Any]] = None,
     ) -> T:
         """
         Generate structured response using local model.
@@ -509,5 +509,5 @@ class LocalLLMClient(BaseLLMClient):
         # TODO: Implement this
         raise NotImplementedError("LocalLLMClient does not support structured output")
 
-    async def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> list[str]:
         return ["llama2", "mistral", "codellama"]

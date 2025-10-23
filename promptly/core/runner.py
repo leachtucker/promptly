@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from .clients import BaseLLMClient, LLMResponse
 from .templates import PromptTemplate
@@ -24,7 +24,7 @@ class PromptRunner:
         self,
         model: str,
         prompt: PromptTemplate,
-        variables: Optional[Dict[str, Any]] = None,
+        variables: Optional[dict[str, Any]] = None,
         **llm_kwargs: Any,
     ) -> LLMResponse:
         """Run a prompt template"""
@@ -52,14 +52,14 @@ class PromptRunner:
         self,
         model: str,
         prompt: PromptTemplate,
-        batch_variables: List[Dict[str, Any]],
+        batch_variables: list[dict[str, Any]],
         concurrency: int = 5,
         **llm_kwargs: Any,
-    ) -> List[LLMResponse]:
+    ) -> list[LLMResponse]:
         """Run a batch of prompts in parallel"""
         semaphore = asyncio.Semaphore(concurrency)
 
-        async def run_single(variables: Dict[str, Any]) -> LLMResponse:
+        async def run_single(variables: dict[str, Any]) -> LLMResponse:
             async with semaphore:
                 return await self.run(model, prompt, variables, **llm_kwargs)
 
@@ -73,7 +73,7 @@ class PromptRunner:
         client: BaseLLMClient,
         model: str,
         prompt: PromptTemplate,
-        variables: Optional[Dict[str, Any]] = None,
+        variables: Optional[dict[str, Any]] = None,
         **llm_kwargs: Any,
     ) -> LLMResponse:
         """Run a prompt template with a given client"""

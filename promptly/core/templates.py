@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import jinja2
 from pydantic import BaseModel, Field
@@ -13,7 +13,7 @@ class PromptMetadata(BaseModel):
     version: str = "1.0.0"
     description: str = ""
     created_at: datetime = Field(default_factory=datetime.now)
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
 
 class PromptTemplate:
@@ -24,7 +24,7 @@ class PromptTemplate:
         template: str,
         name: Optional[str] = None,
         metadata: Optional[PromptMetadata] = None,
-        env_vars: Optional[Dict[str, Any]] = None,
+        env_vars: Optional[dict[str, Any]] = None,
     ):
         self.template = template
         self.name = name or f"prompt_{id(self)}"
@@ -53,7 +53,7 @@ class PromptTemplate:
         except jinja2.UndefinedError as e:
             raise ValueError(f"Missing template variable: {e}") from e
 
-    def get_variables(self) -> List[str]:
+    def get_variables(self) -> list[str]:
         """Extract all variables from the template"""
         if self._compiled_template is None:
             self._compiled_template = self.jinja_env.from_string(self.template)
@@ -67,7 +67,7 @@ class PromptTemplate:
             )
         ]
 
-    def validate_variables(self, variables: Dict[str, Any]) -> bool:
+    def validate_variables(self, variables: dict[str, Any]) -> bool:
         """Validate that all required template variables are provided
 
         Args:
@@ -86,7 +86,7 @@ class PromptTemplate:
 
         return True
 
-    def get_validation_errors(self, variables: Dict[str, Any]) -> List[str]:
+    def get_validation_errors(self, variables: dict[str, Any]) -> list[str]:
         """Get detailed validation errors for template variables
 
         Args:
@@ -106,7 +106,7 @@ class PromptTemplate:
 
         return errors
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""
         return {
             "template": self.template,
@@ -116,7 +116,7 @@ class PromptTemplate:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PromptTemplate":
+    def from_dict(cls, data: dict[str, Any]) -> "PromptTemplate":
         """Create from dictionary"""
         metadata = PromptMetadata(**data.get("metadata", {}))
         return cls(
