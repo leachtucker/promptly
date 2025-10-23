@@ -36,7 +36,7 @@ format:  ## Format code
 	ruff check --fix promptly/ tests/
 
 type-check:  ## Run type checking
-	mypy promptly/
+	pyright promptly/
 
 clean:  ## Clean up build artifacts
 	rm -rf build/
@@ -63,7 +63,7 @@ ci:  ## Run CI pipeline locally
 	uv pip install -e .[dev,cli,ui]
 	ruff format --check promptly/ tests/
 	ruff check promptly/ tests/
-	mypy promptly/
+	pyright promptly/
 	pytest --cov=promptly --cov-report=term
 
 # Development shortcuts
@@ -76,3 +76,40 @@ run-tests: test  ## Alias for test
 clean-db:  ## Clean up test databases
 	find . -name "*.db" -delete
 	find . -name "promptly_traces.db" -delete
+
+# Version management and releases
+release-patch:  ## Release a patch version (0.1.0 -> 0.1.1)
+	cz bump --increment PATCH
+	git push --follow-tags
+
+release-minor:  ## Release a minor version (0.1.0 -> 0.2.0)
+	cz bump --increment MINOR
+	git push --follow-tags
+
+release-major:  ## Release a major version (0.1.0 -> 1.0.0)
+	cz bump --increment MAJOR
+	git push --follow-tags
+
+release:  ## Auto-detect version bump based on commits
+	cz bump
+	git push --follow-tags
+
+# Pre-commit hooks
+pre-commit-install:  ## Install pre-commit hooks
+	pre-commit install
+
+pre-commit-run:  ## Run pre-commit hooks on all files
+	pre-commit run --all-files
+
+# Package publishing
+publish-test:  ## Publish to Test PyPI
+	python -m build
+	twine upload --repository testpypi dist/*
+
+publish:  ## Publish to PyPI (manual fallback)
+	@echo "Warning: This will publish to PyPI. Use with caution!"
+	@echo "Recommended: Use git tags (e.g., 'git tag v0.1.0 && git push --tags') to trigger automated release."
+	@read -p "Are you sure you want to manually publish? [y/N] " -n 1 -r; \
+	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+		python -m build && twine upload dist/*; \
+	fi

@@ -3,9 +3,10 @@ Tests for optimizer module
 """
 
 import asyncio
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Type, TypeVar
 
 import pytest
+from pydantic import BaseModel
 
 from promptly.core.clients import BaseLLMClient, LLMResponse
 from promptly.core.optimizer import (
@@ -21,6 +22,8 @@ from promptly.core.optimizer import (
 from promptly.core.templates import PromptTemplate
 from promptly.core.tracer import UsageData
 
+T = TypeVar("T", bound=BaseModel)
+
 
 class MockLLMClient(BaseLLMClient):
     """Mock LLM client for testing"""
@@ -31,7 +34,9 @@ class MockLLMClient(BaseLLMClient):
         self.call_count = 0
         self.structured_call_count = 0
 
-    async def generate(self, prompt: str, model: Optional[str] = None, **kwargs) -> LLMResponse:
+    async def generate(
+        self, prompt: str, model: Optional[str] = None, options: Optional[Dict[str, Any]] = None
+    ) -> LLMResponse:
         if self.structured_responses:
             # Return JSON response for structured calls
             import json
@@ -57,8 +62,12 @@ class MockLLMClient(BaseLLMClient):
         )
 
     async def generate_structured(
-        self, prompt: str, response_model, model: Optional[str] = None, **kwargs
-    ):
+        self,
+        prompt: str,
+        response_model: Type[T],
+        model: Optional[str] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> T:
         """Mock structured generation"""
         if self.structured_responses:
             response_data = self.structured_responses[
@@ -70,7 +79,7 @@ class MockLLMClient(BaseLLMClient):
             # Return a default instance
             return response_model()
 
-    def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> List[str]:
         return ["mock-model"]
 
 
@@ -635,7 +644,9 @@ class TestParallelExecutionOptimizations:
 
         # Create mock client that adds delay to simulate API calls
         class DelayedMockClient(MockLLMClient):
-            async def generate(self, prompt, model=None, **kwargs):
+            async def generate(
+                self, prompt: str, model: Optional[str] = None, options: Optional[Any] = None
+            ) -> LLMResponse:
                 await asyncio.sleep(0.05)  # 50ms delay per call
                 # Return proper JSON for evaluation calls
                 if "evaluate" in prompt.lower() or "score" in prompt.lower():
@@ -645,7 +656,7 @@ class TestParallelExecutionOptimizations:
                         usage=UsageData(prompt_tokens=10, completion_tokens=5, total_tokens=15),
                         metadata={},
                     )
-                return await super().generate(prompt, model, **kwargs)
+                return await super().generate(prompt, model, options)
 
         client = DelayedMockClient(responses=["Test response"])
         runner = PromptRunner(client)
@@ -685,7 +696,9 @@ class TestParallelExecutionOptimizations:
         call_times = []
 
         class TimedMockClient(MockLLMClient):
-            async def generate(self, prompt, model=None, **kwargs):
+            async def generate(
+                self, prompt: str, model: Optional[str] = None, options: Optional[Any] = None
+            ) -> LLMResponse:
                 import time
 
                 call_times.append(time.time())
@@ -698,7 +711,7 @@ class TestParallelExecutionOptimizations:
                         usage=UsageData(prompt_tokens=10, completion_tokens=5, total_tokens=15),
                         metadata={},
                     )
-                return await super().generate(prompt, model, **kwargs)
+                return await super().generate(prompt, model, options)
 
         client = TimedMockClient(responses=["Test response"])
         runner = PromptRunner(client)
@@ -770,9 +783,11 @@ class TestParallelExecutionOptimizations:
 
         # Create mock clients with delay
         class SlowMockClient(MockLLMClient):
-            async def generate(self, prompt, model=None, **kwargs):
+            async def generate(
+                self, prompt: str, model: Optional[str] = None, options: Optional[Any] = None
+            ) -> LLMResponse:
                 await asyncio.sleep(0.05)  # 50ms delay
-                return await super().generate(prompt, model, **kwargs)
+                return await super().generate(prompt, model, options)
 
         eval_client = SlowMockClient(
             structured_responses=[
@@ -825,11 +840,13 @@ class TestParallelExecutionOptimizations:
 
         # Create client that fails some requests
         class FailingSometimesMockClient(MockLLMClient):
-            def __init__(self, *args, **kwargs):
+            def __init__(self, *args: Any, **kwargs: Any):
                 super().__init__(*args, **kwargs)
                 self.call_count = 0
 
-            async def generate(self, prompt, model=None, **kwargs):
+            async def generate(
+                self, prompt: str, model: Optional[str] = None, options: Optional[Any] = None
+            ) -> LLMResponse:
                 self.call_count += 1
                 # Return proper JSON for evaluation calls (don't fail on evaluation)
                 if "evaluate" in prompt.lower() or "score" in prompt.lower():
@@ -842,7 +859,7 @@ class TestParallelExecutionOptimizations:
                 # Fail every 3rd test case execution
                 if self.call_count % 3 == 0:
                     raise Exception("Simulated API failure")
-                return await super().generate(prompt, model, **kwargs)
+                return await super().generate(prompt, model, options)
 
         client = FailingSometimesMockClient(responses=["Test response"])
         runner = PromptRunner(client)

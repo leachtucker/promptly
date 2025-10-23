@@ -24,10 +24,8 @@ class PromptTemplate:
         template: str,
         name: Optional[str] = None,
         metadata: Optional[PromptMetadata] = None,
-        env_vars: Dict[str, Any] = None,
+        env_vars: Optional[Dict[str, Any]] = None,
     ):
-        if env_vars is None:
-            env_vars = {}
         self.template = template
         self.name = name or f"prompt_{id(self)}"
         self.metadata = metadata or PromptMetadata(name=self.name)
@@ -65,7 +63,7 @@ class PromptTemplate:
         return [
             node.name
             for node in self._compiled_template.environment.parse(self.template).find_all(
-                jinja2.nodes.Name  # type: ignore
+                jinja2.nodes.Name  # pyright: ignore[reportAttributeAccessIssue]
             )
         ]
 

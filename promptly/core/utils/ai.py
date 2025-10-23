@@ -21,9 +21,9 @@ def simple_schema(model: type[BaseModel]) -> dict[str, str]:
         if get_origin(annotation) is not None:
             # It's a generic type, use string representation to preserve inner types
             type_str = str(annotation).replace("typing.", "")
-        elif hasattr(annotation, "__name__"):
+        elif annotation is not None and hasattr(annotation, "__name__"):
             # Simple type like str, int, float
-            type_str = annotation.__name__  # type: ignore
+            type_str = annotation.__name__
         else:
             # Fallback for other complex types
             type_str = str(annotation).replace("typing.", "")

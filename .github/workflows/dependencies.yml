@@ -1,0 +1,39 @@
+name: Update Dependencies
+
+on:
+  schedule:
+    - cron: "0 0 * * 1" # Weekly on Monday at midnight UTC
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update:
+    name: Update dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Update dependencies
+        run: |
+          uv pip compile pyproject.toml --upgrade -o requirements.txt || echo "No requirements.txt generated"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: "chore: update dependencies"
+          title: "chore: update dependencies"
+          body: |
+            Automated dependency updates generated weekly.
+
+            Please review the changes and ensure all tests pass before merging.
+          branch: update-dependencies
+          delete-branch: true
+          labels: dependencies

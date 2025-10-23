@@ -40,7 +40,7 @@ class BaseLLMClient(ABC):
         self,
         prompt: str,
         model: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        options: Optional[Any] = None,
     ) -> LLMResponse:
         """
         Generate response from LLM.
@@ -61,7 +61,7 @@ class BaseLLMClient(ABC):
         prompt: str,
         response_model: Type[T],
         model: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        options: Optional[Any] = None,
     ) -> T:
         """
         Generate structured response from LLM.
@@ -78,7 +78,7 @@ class BaseLLMClient(ABC):
         pass
 
     @abstractmethod
-    def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> List[str]:
         """Get list of available models"""
         pass
 
@@ -119,20 +119,26 @@ class OpenAIClient(BaseLLMClient):
         """
         model = model or self.default_model
 
-        response = await self.client.chat.completions.create(
-            model=model,
-            messages=[{"role": "system", "content": prompt}],
-            **(options or {}),  # type: ignore[arg-type]
-        )
+        # Build parameters dict, excluding already set ones
+        params = {
+            "model": model,
+            "messages": [{"role": "system", "content": prompt}],
+            **(options or {}),
+        }
+        response = await self.client.chat.completions.create(**params)
+
+        usage_data = UsageData()
+        if response.usage:
+            usage_data = UsageData(
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                total_tokens=response.usage.total_tokens,
+            )
 
         return LLMResponse(
             content=response.choices[0].message.content,
             model=response.model,
-            usage=UsageData(
-                prompt_tokens=response.usage.prompt_tokens,
-                completion_tokens=response.usage.completion_tokens,
-                total_tokens=response.usage.total_tokens,
-            ),
+            usage=usage_data,
             metadata={
                 "finish_reason": response.choices[0].finish_reason,
                 "response_id": response.id,
@@ -161,12 +167,14 @@ class OpenAIClient(BaseLLMClient):
         """
         model = model or self.default_model
 
-        response = await self.client.beta.chat.completions.parse(
-            model=model,
-            messages=[{"role": "system", "content": prompt}],
-            response_format=response_model,
-            **(options or {}),  # type: ignore[arg-type]
-        )
+        # Build parameters dict, excluding already set ones
+        params = {
+            "model": model,
+            "messages": [{"role": "system", "content": prompt}],
+            "response_format": response_model,
+            **(options or {}),
+        }
+        response = await self.client.beta.chat.completions.parse(**params)
 
         parsed = response.choices[0].message.parsed
         if parsed is None:
@@ -230,7 +238,7 @@ class AnthropicClient(BaseLLMClient):
         response = await self.client.messages.create(
             model=model,
             system=prompt,
-            **opts,  # type: ignore[arg-type]
+            **opts,
         )
 
         return LLMResponse(
@@ -282,7 +290,7 @@ class AnthropicClient(BaseLLMClient):
         response = await self.client.messages.create(
             model=model,
             system=json_prompt,
-            **opts,  # type: ignore[arg-type]
+            **opts,
         )
 
         # Parse the JSON response
@@ -341,7 +349,6 @@ class GoogleAIClient(BaseLLMClient):
         """
         model_name = model or self.default_model
 
-        # Convert TypedDict to GenerateContentConfig if options provided
         config = genai.types.GenerateContentConfig(**options) if options else None  # type: ignore[arg-type]
 
         # Generate content - use async API
@@ -401,7 +408,7 @@ class GoogleAIClient(BaseLLMClient):
             T: Instance of response_model with parsed data
         """
         model_name = model or self.default_model
-        opts: Dict[str, Any] = dict(options or {})
+        opts: Dict[str, Any] = dict(options) if options else {}
 
         # Get the JSON schema
         schema = response_model.model_json_schema()
@@ -410,7 +417,6 @@ class GoogleAIClient(BaseLLMClient):
         opts["response_mime_type"] = "application/json"
         opts["response_schema"] = schema
 
-        # Create generation config for structured output
         config = genai.types.GenerateContentConfig(**opts)  # type: ignore[arg-type]
 
         # Generate content
@@ -430,7 +436,7 @@ class GoogleAIClient(BaseLLMClient):
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"Failed to parse structured response: {e}") from e
 
-    def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> List[str]:
         """Get list of available Gemini models"""
         models = self.client.models.list(config={"query_base": True})
         return [model.name for model in models.page if model.name]
@@ -503,5 +509,5 @@ class LocalLLMClient(BaseLLMClient):
         # TODO: Implement this
         raise NotImplementedError("LocalLLMClient does not support structured output")
 
-    def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> List[str]:
         return ["llama2", "mistral", "codellama"]

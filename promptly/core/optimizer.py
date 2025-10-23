@@ -9,11 +9,11 @@ import sqlite3
 import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, ValidationError
 
-from .clients import BaseLLMClient, GoogleAIClient, OpenAIClient
+from .clients import BaseLLMClient, GoogleAIClient, LLMResponse, OpenAIClient
 from .runner import PromptRunner
 from .templates import PromptTemplate
 from .tracer import Tracer
@@ -174,7 +174,7 @@ class LLMComprehensiveFitnessFunction(LLMFitnessFunction):
         *,
         runner: PromptRunner,
         prompt: PromptTemplate,
-        model: str,
+        model: str = "gpt-4",
         test_cases: Optional[List[PromptTestCase]] = None,
         variables: Optional[Dict[str, Any]] = None,
     ) -> FitnessEvaluation:
@@ -716,7 +716,7 @@ class OptimizerPromptRunner(PromptRunner):
         prompt: PromptTemplate,
         variables: Optional[Dict[str, Any]] = None,
         **llm_kwargs: Any,
-    ):
+    ) -> LLMResponse:
         """Override to add optimizer context to traces"""
         if variables is None:
             variables = {}
@@ -911,7 +911,7 @@ class LLMGeneticOptimizer:
         runner: PromptRunner,
         variables: Optional[Dict[str, Any]] = None,
         model: str,
-    ) -> List[FitnessEvaluation | BaseException]:
+    ) -> List[Union[FitnessEvaluation, BaseException]]:
         """Evaluate fitness for entire population"""
         if not self.fitness_function:
             raise ValueError("No fitness function provided")

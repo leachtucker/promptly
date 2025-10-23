@@ -24,7 +24,7 @@ class TraceRecord(BaseModel):
     prompt_name: str = ""
     prompt_template: str = ""
     rendered_prompt: str = ""
-    response: str = ""
+    response: Optional[str] = ""
     model: str = ""
     timestamp: datetime = Field(default_factory=datetime.now)
     duration_ms: float = 0

@@ -42,24 +42,24 @@ from promptly import PromptRunner, OpenAIClient, PromptTemplate
 async def main():
     # Initialize client
     client = OpenAIClient(api_key="your-api-key")
-    
+
     # Create a prompt template
     template = PromptTemplate(
         name="greeting",
         template="Hello {{ name }}, how are you today?",
         variables=["name"]
     )
-    
+
     # Create runner with tracing
     runner = PromptRunner(client)
-    
+
     # Execute prompt
     response = await runner.run(
         template=template,
         variables={"name": "Alice"},
         model="gpt-3.5-turbo"
     )
-    
+
     print(response.content)
 
 asyncio.run(main())

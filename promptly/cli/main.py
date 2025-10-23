@@ -298,13 +298,14 @@ def trace(
             table.add_column("Generation", style="red")
 
         for record in trace_records:
+            response_text = record.response or ""
             row_data = [
                 str(record.id or "N/A"),
                 record.prompt_name,
                 record.prompt_template[:400] + "..."
                 if len(record.prompt_template) > 400
                 else record.prompt_template,
-                record.response[:400] + "..." if len(record.response) > 400 else record.response,
+                response_text[:400] + "..." if len(response_text) > 400 else response_text,
                 record.model,
                 f"{record.duration_ms:.2f}",
                 str(record.error)[:30] if record.error else "",

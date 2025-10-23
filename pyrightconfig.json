@@ -1,0 +1,29 @@
+{
+  "include": [
+    "promptly",
+    "tests"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/venv",
+    "examples"
+  ],
+  "ignore": [],
+  "defineConstant": {},
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "pythonVersion": "3.9",
+  "pythonPlatform": "All",
+  "executionEnvironments": [
+    {
+      "root": "."
+    }
+  ],
+  "typeCheckingMode": "basic",
+  "reportArgumentType": "warning",
+  "useLibraryCodeForTypes": true,
+  "autoSearchPaths": true,
+  "extraPaths": [],
+  "stubPath": "./typings"
+}

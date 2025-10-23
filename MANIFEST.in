@@ -1,9 +1,9 @@
 include README.md
 include LICENSE
+include CHANGELOG.md
 include pyproject.toml
-include setup.py
 recursive-include promptly *.py
-recursive-include promptly/core *.py
+recursive-include promptly py.typed
 global-exclude *.pyc
 global-exclude __pycache__
 global-exclude .git*

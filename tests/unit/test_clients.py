@@ -66,7 +66,7 @@ class TestOpenAIClient:
         response = await client.generate(
             prompt="Test prompt",
             model="gpt-3.5-turbo",
-            options={"temperature": 0.7, "max_tokens": 100},
+            options={"temperature": 0.7, "max_tokens": 100},  # type: ignore[arg-type]
         )
 
         # Verify response
@@ -186,7 +186,7 @@ class TestAnthropicClient:
         response = await client.generate(
             prompt="Test prompt",
             model="claude-3-sonnet-20240229",
-            options={"temperature": 0.7, "max_tokens": 100},
+            options={"temperature": 0.7, "max_tokens": 100},  # type: ignore[arg-type]
         )
 
         # Verify response
@@ -383,7 +383,8 @@ class TestGoogleAIClient:
             assert response.content == "Test response"
             assert response.model == "gemini-1.5-flash"
 
-    def test_google_ai_client_get_available_models(self):
+    @pytest.mark.asyncio
+    async def test_google_ai_client_get_available_models(self):
         """Test Google AI client get available models"""
         # Create mock model objects
         mock_model_1 = MagicMock()
@@ -403,7 +404,7 @@ class TestGoogleAIClient:
 
         with patch("google.genai.Client", return_value=mock_client_instance):
             client = GoogleAIClient(api_key="test-key")
-            models = client.get_available_models()
+            models = await client.get_available_models()
 
             assert isinstance(models, list)
             assert len(models) == 3

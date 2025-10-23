@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "promptly"
+name = "promptly-llm"
 version = "0.1.0"
 description = "A lightweight library for LLM prompt management, observability/tracing, and optimization"
 readme = "README.md"
@@ -37,8 +37,11 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
-    "mypy>=1.0.0",
+    "pyright>=1.1.0",
+    "commitizen>=3.0.0",
+    "pre-commit>=3.0.0",
 ]
 cli = [
     "click>=8.0.0",
@@ -50,12 +53,22 @@ ui = [
     "streamlit>=1.20.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/orgpromptly/promptly"
+Documentation = "https://github.com/orgpromptly/promptly#readme"
+Repository = "https://github.com/orgpromptly/promptly"
+Issues = "https://github.com/orgpromptly/promptly/issues"
+Changelog = "https://github.com/orgpromptly/promptly/blob/main/CHANGELOG.md"
+
 [project.scripts]
 promptly = "promptly.cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["promptly*"]
+
+[tool.setuptools.package-data]
+promptly = ["py.typed"]
 
 [tool.ruff]
 line-length = 100
@@ -88,3 +101,12 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 # Use Unix line endings
 line-ending = "auto"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
+version_files = ["pyproject.toml:version"]
+update_changelog_on_bump = true
+changelog_incremental = true
+changelog_start_rev = "0.1.0"

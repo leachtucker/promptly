@@ -272,9 +272,9 @@ async def optimize_prompt():
     # Setup clients
     main_client = OpenAIClient()
     eval_client = OpenAIClient()
-    
+
     runner = PromptRunner(main_client)
-    
+
     # Create test cases
     test_cases = [
         PromptTestCase(
@@ -286,13 +286,13 @@ async def optimize_prompt():
             expected_output="6"
         ),
     ]
-    
+
     # Create base prompt
     base_prompt = PromptTemplate(
         template="Answer this question: {{question}}",
         name="math_qa_prompt"
     )
-    
+
     # Setup optimizer
     optimizer = LLMGeneticOptimizer(
         eval_model="gpt-4",
@@ -301,10 +301,10 @@ async def optimize_prompt():
         fitness_function=LLMComprehensiveFitnessFunction(eval_client, "gpt-4"),
         eval_client=eval_client,
     )
-    
+
     # Run optimization
     result = await optimizer.optimize(runner, base_prompt, test_cases)
-    
+
     print(f"Best prompt: {result.best_prompt.template}")
     print(f"Fitness score: {result.fitness_score}")
 
@@ -327,16 +327,16 @@ from promptly import (
 async def optimize_prompt_quality():
     # Setup clients
     eval_client = OpenAIClient()
-    
+
     # Create runner for optimization
     runner = PromptRunner(eval_client)
-    
+
     # Create base prompt
     base_prompt = PromptTemplate(
         template="Write a story about {{character}} in {{setting}}",
         name="story_prompt"
     )
-    
+
     # Setup optimizer for quality-based optimization
     optimizer = LLMGeneticOptimizer(
         eval_model="gpt-4",
@@ -345,10 +345,10 @@ async def optimize_prompt_quality():
         fitness_function=LLMComprehensiveFitnessFunction(eval_client, "gpt-4"),
         eval_client=eval_client,
     )
-    
+
     # Run optimization without test cases (quality-based)
     result = await optimizer.optimize(runner, base_prompt, test_cases=None)
-    
+
     print(f"Best prompt: {result.best_prompt.template}")
     print(f"Quality score: {result.fitness_score}")
 
@@ -447,7 +447,7 @@ Options:
 See `examples/optimizer_example.py` for comprehensive examples including:
 
 - Math Q&A optimization
-- Creative writing optimization  
+- Creative writing optimization
 - Code generation optimization
 
 
