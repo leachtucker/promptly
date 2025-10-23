@@ -18,7 +18,7 @@ class TestIntegration:
     async def test_full_workflow_with_tracing(self, temp_db):
         """Test complete workflow from template to response with tracing"""
         # Create tracer with temp database
-        tracer = Tracer(db_path=temp_db)
+        tracer = Tracer(db_path=temp_db, enable_tracing=True)
 
         # Create mock client
         mock_client = AsyncMock()
@@ -79,7 +79,7 @@ class TestIntegration:
     @pytest.mark.asyncio
     async def test_multiple_prompts_workflow(self, temp_db):
         """Test workflow with multiple prompts"""
-        tracer = Tracer(db_path=temp_db)
+        tracer = Tracer(db_path=temp_db, enable_tracing=True)
 
         # Create mock client
         mock_client = AsyncMock()
@@ -137,7 +137,7 @@ class TestIntegration:
     @pytest.mark.asyncio
     async def test_error_handling_workflow(self, temp_db):
         """Test workflow with error handling"""
-        tracer = Tracer(db_path=temp_db)
+        tracer = Tracer(db_path=temp_db, enable_tracing=True)
 
         # Create mock client that fails
         mock_client = AsyncMock()
@@ -166,7 +166,7 @@ class TestIntegration:
     @pytest.mark.asyncio
     async def test_simple_prompt_workflow(self, temp_db):
         """Test simple prompt workflow without templates"""
-        tracer = Tracer(db_path=temp_db)
+        tracer = Tracer(db_path=temp_db, enable_tracing=True)
 
         # Create mock client
         mock_client = AsyncMock()
@@ -218,5 +218,5 @@ class TestIntegration:
         template = PromptTemplate(template="Hello {{ name }}!")
         assert template is not None
 
-        tracer = Tracer(db_path=":memory:")
+        tracer = Tracer(db_path=":memory:", enable_tracing=True)
         assert tracer is not None

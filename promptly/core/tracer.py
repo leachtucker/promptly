@@ -75,14 +75,20 @@ class TraceRecord(BaseModel):
 class Tracer:
     """Simple SQLite-based tracer for LLM calls"""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, enable_tracing: Optional[bool] = None):
         if db_path is None:
             db_path = get_env_var("PROMPTLY_DB_PATH", "promptly_traces.db")
             assert db_path is not None
 
         self.db_path = Path(db_path)
         self._init_db()
-        self.is_tracing_enabled = get_env_var("PROMPTLY_TRACING_ENABLED", "false") == "true"
+
+        # Enable tracing by default unless explicitly disabled via environment variable
+        if enable_tracing is not None:
+            self.is_tracing_enabled = enable_tracing
+        else:
+            # Default to True, only disable if explicitly set to "false"
+            self.is_tracing_enabled = get_env_var("PROMPTLY_TRACING_ENABLED", "true") != "false"
 
     def _init_db(self) -> None:
         """Initialize SQLite database"""
@@ -231,7 +237,7 @@ class Tracer:
 
         return records
 
-    def get_record(self, id: str) -> Optional[TraceRecord]:
+    def get_record(self, id: int) -> Optional[TraceRecord]:
         """Get a trace record by id"""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row

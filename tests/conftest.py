@@ -98,7 +98,7 @@ def mock_llm_client():
 @pytest.fixture
 def tracer_with_temp_db(temp_db):
     """Tracer instance with temporary database"""
-    return Tracer(db_path=temp_db)
+    return Tracer(db_path=temp_db, enable_tracing=True)
 
 
 @pytest.fixture
