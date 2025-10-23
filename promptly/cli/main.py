@@ -177,7 +177,7 @@ class RichProgressCallback(ProgressCallback):
 
 
 @click.group()
-@click.version_option()
+@click.version_option(version="0.1.0")
 def main() -> None:
     """promptly - A lightweight library for LLM prompt management and optimization"""
     pass

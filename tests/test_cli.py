@@ -34,7 +34,7 @@ class TestCLI:
         assert "0.1.0" in result.output
 
     @patch("promptly.cli.main.PromptRunner")
-    @patch("promptly.cli.main.OpenAIClient")
+    @patch("promptly.core.clients.OpenAIClient")
     def test_cli_run_simple_prompt(self, mock_openai_class, mock_runner_class):
         """Test CLI run command with simple prompt"""
         # Mock the runner
@@ -66,7 +66,7 @@ class TestCLI:
         assert "The capital of France is Paris." in result.output
 
     @patch("promptly.cli.main.PromptRunner")
-    @patch("promptly.cli.main.OpenAIClient")
+    @patch("promptly.core.clients.OpenAIClient")
     def test_cli_run_with_trace(self, mock_openai_class, mock_runner_class):
         """Test CLI run command with tracing enabled"""
         # Mock the runner
@@ -99,7 +99,7 @@ class TestCLI:
         assert "Either --template or prompt argument is required" in result.output
 
     @patch("promptly.cli.main.PromptRunner")
-    @patch("promptly.cli.main.OpenAIClient")
+    @patch("promptly.core.clients.OpenAIClient")
     def test_cli_run_with_anthropic(self, mock_openai_class, mock_runner_class):
         """Test CLI run command with Anthropic provider"""
         # Mock the runner
@@ -154,7 +154,7 @@ class TestCLI:
         assert "test-123" in result.output
 
     @patch("promptly.cli.main.PromptRunner")
-    @patch("promptly.cli.main.OpenAIClient")
+    @patch("promptly.core.clients.OpenAIClient")
     def test_cli_run_error_handling(self, mock_openai_class, mock_runner_class):
         """Test CLI run command error handling"""
         # Mock the runner to raise an error

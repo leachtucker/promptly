@@ -37,10 +37,14 @@ class TestOpenAIClient:
 
     def test_openai_client_initialization_without_key(self):
         """Test OpenAI client initialization without API key"""
-        client = OpenAIClient()
+        with patch("openai.AsyncOpenAI") as mock_openai_class:
+            mock_client = AsyncMock()
+            mock_openai_class.return_value = mock_client
 
-        assert client.default_model == "gpt-3.5-turbo"
-        assert client.client is not None
+            client = OpenAIClient()
+
+            assert client.default_model == "gpt-3.5-turbo"
+            assert client.client is not None
 
     @pytest.mark.asyncio
     @patch("openai.AsyncOpenAI")
@@ -120,9 +124,22 @@ class TestOpenAIClient:
         assert call_args[1]["model"] == "gpt-3.5-turbo"
 
     @pytest.mark.asyncio
-    async def test_openai_client_get_available_models(self):
+    @patch("openai.AsyncOpenAI")
+    async def test_openai_client_get_available_models(self, mock_openai_class):
         """Test OpenAI client get available models"""
-        client = OpenAIClient()
+        mock_client = AsyncMock()
+        mock_openai_class.return_value = mock_client
+
+        # Mock the models.list() method
+        mock_models = AsyncMock()
+        mock_models.data = [
+            AsyncMock(id="gpt-3.5-turbo"),
+            AsyncMock(id="gpt-4"),
+            AsyncMock(id="gpt-4-turbo"),
+        ]
+        mock_client.models.list.return_value = mock_models
+
+        client = OpenAIClient(api_key="test-key")
         models = await client.get_available_models()
 
         assert isinstance(models, list)
@@ -238,9 +255,22 @@ class TestAnthropicClient:
         assert call_args[1]["model"] == "claude-3-sonnet-20240229"
 
     @pytest.mark.asyncio
-    async def test_anthropic_client_get_available_models(self):
+    @patch("anthropic.AsyncAnthropic")
+    async def test_anthropic_client_get_available_models(self, mock_anthropic_class):
         """Test Anthropic client get available models"""
-        client = AnthropicClient()
+        mock_client = AsyncMock()
+        mock_anthropic_class.return_value = mock_client
+
+        # Mock the models.list() method
+        mock_models = AsyncMock()
+        mock_models.data = [
+            AsyncMock(id="claude-opus-4-1-20250805"),
+            AsyncMock(id="claude-sonnet-4-5-20250929"),
+            AsyncMock(id="claude-haiku-4-1-20250805"),
+        ]
+        mock_client.models.list.return_value = mock_models
+
+        client = AnthropicClient(api_key="test-key")
         models = await client.get_available_models()
 
         assert isinstance(models, list)
