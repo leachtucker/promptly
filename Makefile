@@ -74,19 +74,19 @@ run-tests: test  ## Alias for test
 
 # Version management and releases
 release-patch:  ## Release a patch version (0.1.0 -> 0.1.1)
-	cz bump --increment PATCH
+	uv run cz bump --increment PATCH --yes
 	git push --follow-tags
 
 release-minor:  ## Release a minor version (0.1.0 -> 0.2.0)
-	cz bump --increment MINOR
+	uv run cz bump --increment MINOR --yes
 	git push --follow-tags
 
 release-major:  ## Release a major version (0.1.0 -> 1.0.0)
-	cz bump --increment MAJOR
+	uv run cz bump --increment MAJOR --yes
 	git push --follow-tags
 
 release:  ## Auto-detect version bump based on commits
-	cz bump
+	uv run cz bump --yes
 	git push --follow-tags
 
 # Pre-commit hooks

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "promptly-llm"
-version = "0.1.0"
+version = "0.2.0"
 description = "A lightweight library for LLM prompt management, observability/tracing, and optimization"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -105,9 +105,9 @@ line-ending = "auto"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.1.0"
+version = "0.2.0"
 tag_format = "v$version"
 version_files = ["pyproject.toml:version"]
 update_changelog_on_bump = true
 changelog_incremental = true
-changelog_start_rev = "0.1.0"
+changelog_start_rev = ""

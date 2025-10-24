@@ -2,7 +2,7 @@
 
 ## 📋 Common Commands
 
-### Using Make 
+### Using Make
 ```bash
 make help                    # Show all commands
 make install-dev             # Install with dev dependencies
