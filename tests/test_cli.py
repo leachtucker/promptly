@@ -34,7 +34,7 @@ class TestCLI:
         assert "0.1.0" in result.output
 
     @patch("promptly.cli.main.PromptRunner")
-    @patch("promptly.core.clients.OpenAIClient")
+    @patch("promptly.cli.main.OpenAIClient")
     def test_cli_run_simple_prompt(self, mock_openai_class, mock_runner_class):
         """Test CLI run command with simple prompt"""
         # Mock the runner
@@ -46,9 +46,9 @@ class TestCLI:
             usage=UsageData(total_tokens=10),
         )
 
-        # Mock OpenAI client
-        mock_client = AsyncMock()
-        mock_openai_class.return_value = mock_client
+        # Mock OpenAI client - return a mock instance when called
+        mock_client_instance = AsyncMock()
+        mock_openai_class.return_value = mock_client_instance
 
         runner = CliRunner()
         result = runner.invoke(
@@ -66,7 +66,7 @@ class TestCLI:
         assert "The capital of France is Paris." in result.output
 
     @patch("promptly.cli.main.PromptRunner")
-    @patch("promptly.core.clients.OpenAIClient")
+    @patch("promptly.cli.main.OpenAIClient")
     def test_cli_run_with_trace(self, mock_openai_class, mock_runner_class):
         """Test CLI run command with tracing enabled"""
         # Mock the runner
@@ -79,9 +79,9 @@ class TestCLI:
             metadata={"trace_id": "test-trace-123"},
         )
 
-        # Mock OpenAI client
-        mock_client = AsyncMock()
-        mock_openai_class.return_value = mock_client
+        # Mock OpenAI client - return a mock instance when called
+        mock_client_instance = AsyncMock()
+        mock_openai_class.return_value = mock_client_instance
 
         runner = CliRunner()
         result = runner.invoke(run, ["Test prompt", "--trace"])
@@ -99,8 +99,8 @@ class TestCLI:
         assert "Either --template or prompt argument is required" in result.output
 
     @patch("promptly.cli.main.PromptRunner")
-    @patch("promptly.core.clients.OpenAIClient")
-    def test_cli_run_with_anthropic(self, mock_openai_class, mock_runner_class):
+    @patch("promptly.cli.main.AnthropicClient")
+    def test_cli_run_with_anthropic(self, mock_anthropic_class, mock_runner_class):
         """Test CLI run command with Anthropic provider"""
         # Mock the runner
         mock_runner = AsyncMock()
@@ -111,9 +111,9 @@ class TestCLI:
             usage=UsageData(total_tokens=10),
         )
 
-        # Mock OpenAI client (shouldn't be used)
-        mock_client = AsyncMock()
-        mock_openai_class.return_value = mock_client
+        # Mock Anthropic client - return a mock instance when called
+        mock_client_instance = AsyncMock()
+        mock_anthropic_class.return_value = mock_client_instance
 
         runner = CliRunner()
         result = runner.invoke(
@@ -154,7 +154,7 @@ class TestCLI:
         assert "test-123" in result.output
 
     @patch("promptly.cli.main.PromptRunner")
-    @patch("promptly.core.clients.OpenAIClient")
+    @patch("promptly.cli.main.OpenAIClient")
     def test_cli_run_error_handling(self, mock_openai_class, mock_runner_class):
         """Test CLI run command error handling"""
         # Mock the runner to raise an error
@@ -162,9 +162,9 @@ class TestCLI:
         mock_runner_class.return_value = mock_runner
         mock_runner.run.side_effect = Exception("API Error")
 
-        # Mock OpenAI client
-        mock_client = AsyncMock()
-        mock_openai_class.return_value = mock_client
+        # Mock OpenAI client - return a mock instance when called
+        mock_client_instance = AsyncMock()
+        mock_openai_class.return_value = mock_client_instance
 
         runner = CliRunner()
         result = runner.invoke(run, ["Test prompt"])
