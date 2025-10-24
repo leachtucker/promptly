@@ -72,11 +72,6 @@ run-cli:  ## Run the CLI
 
 run-tests: test  ## Alias for test
 
-# Database cleanup
-clean-db:  ## Clean up test databases
-	find . -name "*.db" -delete
-	find . -name "promptly_traces.db" -delete
-
 # Version management and releases
 release-patch:  ## Release a patch version (0.1.0 -> 0.1.1)
 	cz bump --increment PATCH
@@ -104,12 +99,12 @@ pre-commit-run:  ## Run pre-commit hooks on all files
 # Package publishing
 publish-test:  ## Publish to Test PyPI
 	uv run python -m build
-	twine upload --repository testpypi dist/*
+	uv run twine upload --repository testpypi dist/*
 
 publish:  ## Publish to PyPI (manual fallback)
 	@echo "Warning: This will publish to PyPI. Use with caution!"
 	@echo "Recommended: Use git tags (e.g., 'git tag v0.1.0 && git push --tags') to trigger automated release."
 	@read -p "Are you sure you want to manually publish? [y/N] " -n 1 -r; \
 	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-		uv run python -m build && twine upload dist/*; \
+		uv run python -m build && uv run twine upload dist/*; \
 	fi
