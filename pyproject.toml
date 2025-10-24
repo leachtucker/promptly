@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A lightweight library for LLM prompt management, observability/tracing, and optimization"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Tucker Leach", email = "leachtucker@gmail.com"},
 ]
@@ -16,7 +16,6 @@ keywords = ["llm", "prompt", "ai", "machine-learning", "evaluation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

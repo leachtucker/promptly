@@ -49,7 +49,7 @@ clean:  ## Clean up build artifacts
 	find . -type f -name "*.pyc" -delete
 
 build:  ## Build the package
-	python -m build
+	uv run python -m build
 
 install-build:  ## Install the built package
 	uv pip install dist/*.whl
@@ -103,7 +103,7 @@ pre-commit-run:  ## Run pre-commit hooks on all files
 
 # Package publishing
 publish-test:  ## Publish to Test PyPI
-	python -m build
+	uv run python -m build
 	twine upload --repository testpypi dist/*
 
 publish:  ## Publish to PyPI (manual fallback)
@@ -111,5 +111,5 @@ publish:  ## Publish to PyPI (manual fallback)
 	@echo "Recommended: Use git tags (e.g., 'git tag v0.1.0 && git push --tags') to trigger automated release."
 	@read -p "Are you sure you want to manually publish? [y/N] " -n 1 -r; \
 	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-		python -m build && twine upload dist/*; \
+		uv run python -m build && twine upload dist/*; \
 	fi
