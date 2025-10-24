@@ -248,7 +248,7 @@ async def _run_simple_prompt(
 
         click.echo(f"Response: {response.content}")
 
-        if trace and tracer:
+        if trace:
             click.echo(f"Trace ID: {response.metadata.get('trace_id', 'N/A')}")
 
     except Exception as e:

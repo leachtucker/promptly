@@ -6,7 +6,7 @@ import asyncio
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -114,3 +114,30 @@ def sample_trace_record():
         usage=UsageData(total_tokens=20),
         metadata={"test": True},
     )
+
+
+@pytest.fixture
+def cli_module():
+    """Fixture that provides a clean CLI module import with mocked dependencies"""
+    import sys
+
+    # Clear module cache
+    if "promptly.cli.main" in sys.modules:
+        del sys.modules["promptly.cli.main"]
+
+    # Apply patches and import
+    with (
+        patch("promptly.core.clients.OpenAIClient") as mock_openai,
+        patch("promptly.core.clients.AnthropicClient") as mock_anthropic,
+        patch("promptly.core.runner.PromptRunner") as mock_runner,
+    ):
+        from promptly.cli.main import main, run, trace
+
+        yield {
+            "main": main,
+            "run": run,
+            "trace": trace,
+            "mock_openai": mock_openai,
+            "mock_anthropic": mock_anthropic,
+            "mock_runner": mock_runner,
+        }
