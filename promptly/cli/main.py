@@ -194,7 +194,7 @@ def main() -> None:
     help="LLM provider",
 )
 @click.option("--api-key", help="API key for the provider")
-@click.option("--trace", is_flag=True, help="Enable tracing", default=True)
+@click.option("--trace", is_flag=True, help="Enable tracing", default=False)
 @click.argument("prompt", required=False)
 def run(
     template: Optional[str],
@@ -410,7 +410,7 @@ def trace(
     default=10,
     help="Maximum concurrent test case executions per prompt (higher = faster)",
 )
-@click.option("--trace", is_flag=True, help="Enable tracing", default=True)
+@click.option("--trace", is_flag=True, help="Enable tracing", default=False)
 @click.option(
     "--trace-optimizer",
     is_flag=True,
